@@ -1,0 +1,10 @@
+Do different planning step weighing, might create interesting behaviour
+    AS OF NOW NO COMPOUNDING OF SUCCESSIVE EFES, ONLY USED LAST ONE
+
+
+
+
+Using sophisticated sampling it works
+Still weird that by uniform sample of all actinos worked, but just sampling a few using u_imagine didn't
+    Might create problems down the line
+        VERY SUSPICIUOS
