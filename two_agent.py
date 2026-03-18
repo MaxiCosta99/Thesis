@@ -72,15 +72,18 @@ class agent:
 
   def bayesian_observe(self,o,who):
 
-      whose_A = self.A[who]
+      whose_A = self.A[who].copy()
       whose_A_flat = whose_A.reshape(whose_A.shape[0], -1)
-      whose_s = self.s[who]
+      whose_A_norm = whose_A_flat/np.sum(whose_A_flat, axis = 0, keepdims = True)
+      whose_s = self.s[who].copy()
+      assert np.allclose(np.sum(whose_s), 1)
       whose_s_shape = whose_s.shape
       whose_s_flat = whose_s.reshape(-1)
+      #whose_s_flat_unif = np.ones(64)/64
 
-      for i in range(100):
-        temp = whose_A_flat[o]*whose_s_flat
-        whose_s_flat = temp/np.sum(temp, keepdims = True)
+      for i in range(1):
+        temp = whose_A_norm[o,:]*whose_s_flat
+        whose_s_flat = temp/np.sum(temp)
 
       new_s = whose_s_flat
 
@@ -324,16 +327,17 @@ class agent:
 
 
     my_s = self.s[0].copy()
-    #mybel_his_s = self.s[1].copy()
+    mybel_his_s = self.s[1].copy()
 
     action_matrix = self.B[u]
 
     if self.agent_id == 0:
       self.s[0] = np.einsum("ijkl, mk -> ijml", my_s, action_matrix).copy()
-      #self.s[1] = np.einsum("ijkl, mk -> ijml", mybel_his_s, action_matrix).copy() #he doesnt know where I go
+      self.s[1] = np.einsum("ijkl, mk -> ijml", mybel_his_s, action_matrix).copy() #he knows where I go
 
     elif self.agent_id == 1:
       self.s[0] = np.einsum("ijkl, ml -> ijkm", my_s, action_matrix).copy()
+      self.s[1] = np.einsum("ijkl, ml -> ijkm", mybel_his_s, action_matrix).copy() #he knows where I go
 
     else:
       assert 1/0, "WHAT THE SHID? THERE IS ANOTHER???"
@@ -348,7 +352,7 @@ class agent:
     my_s = self.s[0].copy()
     mybel_his_s = self.s[1].copy()
 
-    action_matrix = self.B[u]
+    action_matrix = self.B[u].copy()
 
     if self.agent_id == 0:
       self.s[0] = np.einsum("ijkl, ml -> ijkm", my_s, action_matrix).copy() #where I believe he ended up
@@ -881,6 +885,8 @@ class world:
 
 
 def true_A(base, pretrain_strength = float):
+
+    other_strength = 5.0
     
     agent0_A = np.ones((11,2,2,4,4))*base
 
@@ -895,12 +901,35 @@ def true_A(base, pretrain_strength = float):
     agent0_A[3,0,:,3,:] = pretrain_strength
 
     agent0_A[4,:,:,0,:] = pretrain_strength
+    agent0_A[4,:,:,:,0] = pretrain_strength/other_strength
 
-    #INSERT GM ABOUT OTHER POSITION AND OTHER OBSERVATIONS
+    agent0_A[5,0,0,:,1] = pretrain_strength/other_strength
 
+    agent0_A[6,0,1,:,1] = pretrain_strength/other_strength
+
+    agent0_A[7,:,0,:,2] = pretrain_strength/other_strength
+    agent0_A[7,:,1,:,3] = pretrain_strength/other_strength
+
+    agent0_A[8,:,0,:,3] = pretrain_strength/other_strength
+    agent0_A[8,:,1,:,2] = pretrain_strength/other_strength
+
+    agent0_A[9,1,0,:,1] = pretrain_strength/other_strength
+
+    agent0_A[10,1,1,:,1] = pretrain_strength/other_strength
 
     agent1_A = np.ones((11,2,2,4,4))*base
 
+    agent1_A[0,0,:,1,:] = pretrain_strength/other_strength
+
+    agent1_A[1,1,:,1,:] = pretrain_strength/other_strength
+
+    agent1_A[2,0,:,2,:] = pretrain_strength/other_strength
+    agent1_A[2,1,:,3,:] = pretrain_strength/other_strength
+
+    agent1_A[3,1,:,2,:] = pretrain_strength/other_strength
+    agent1_A[3,0,:,3,:] = pretrain_strength/other_strength
+
+    agent1_A[4,:,:,0,:] = pretrain_strength/other_strength
     agent1_A[4,:,:,:,0] = pretrain_strength
 
     agent1_A[5,0,0,:,1] = pretrain_strength
@@ -917,6 +946,13 @@ def true_A(base, pretrain_strength = float):
 
     agent1_A[10,1,1,:,1] = pretrain_strength
 
+    #agent0_A[4,:,:,:,0] = agent0_A[4,:,:,:,0]/10
+    #agent0_A[5:11,:,:,:,:] = agent0_A[5:11,:,:,:,:]/10
+
+    #agent1_A[4,:,:,0,:] = agent1_A[4,:,:,0,:]/10
+    #agent1_A[0:4,:,:,:,:] = agent1_A[0:4,:,:,:,:]/10
+
+
     return agent0_A, agent1_A
 
 def run(agent0, agent1, epochs = int, nr_actions = int, start_beliefs = np.array, cheeses = list, exploration_phase = bool):
@@ -932,6 +968,7 @@ def run(agent0, agent1, epochs = int, nr_actions = int, start_beliefs = np.array
   epochs_desires = []
 
   epochs_A_matrices.append((agent0.A.copy(), agent1.A.copy()))
+  epochs_desires.append((agent0.goal_states[1],agent1.goal_states[1]))
 
 
   for e in range(epochs):
@@ -957,12 +994,10 @@ def run(agent0, agent1, epochs = int, nr_actions = int, start_beliefs = np.array
     beliefs = []
     observationsA = []
     agentselfposA = []
-    desiresA = []
     
     
     observationsB = []
     agentselfposB = []
-    desiresB = []
 
 
 
@@ -982,6 +1017,7 @@ def run(agent0, agent1, epochs = int, nr_actions = int, start_beliefs = np.array
   
         u = agent0.pick_action()
         agent0.act(u)
+        agent1.act_other(u)
         #print("This is the action taken by agent 0: " + str(u))
 
         w.change_true_s(agent0, u)
@@ -991,11 +1027,18 @@ def run(agent0, agent1, epochs = int, nr_actions = int, start_beliefs = np.array
         agentselfposA.append(agent0.s.copy())
         observationsA.append(o)
 
-        agent0.bayesian_observe(o,0)
-        agent0.bayesian_observe(o,1)
-        agent1.bayesian_observe(o,0)
-        agent1.bayesian_observe(o,1)
-        
+        bayesian = True
+        if bayesian is True:
+            agent0.bayesian_observe(o,0)
+            agent0.bayesian_observe(o,1)
+            agent1.bayesian_observe(o,0)
+            agent1.bayesian_observe(o,1)
+        else:
+            agent0.observe(o,0)
+            agent0.observe(o,1)
+            agent1.observe(o,0)
+            agent1.observe(o,1)
+              
         beliefs.append((agent0.s.copy(),agent1.s.copy()))
 
         #print(f"This is the beliefs of agent 0 after observing: {agent0.s}")
@@ -1006,6 +1049,7 @@ def run(agent0, agent1, epochs = int, nr_actions = int, start_beliefs = np.array
         
         u = agent1.pick_action()
         agent1.act(u)
+        agent0.act_other(u)
         
         #print("This is the action taken by agent 1: " + str(u))
 
@@ -1015,12 +1059,18 @@ def run(agent0, agent1, epochs = int, nr_actions = int, start_beliefs = np.array
         positions.append(pos_conv(w.true_s))
         agentselfposB.append(agent1.s.copy())
         observationsB.append(o)
-
-        agent0.bayesian_observe(o,0)
-        agent0.bayesian_observe(o,1)
-        agent1.bayesian_observe(o,0)
-        agent1.bayesian_observe(o,1)
         
+        if bayesian is True:
+            agent0.bayesian_observe(o,0)
+            agent0.bayesian_observe(o,1)
+            agent1.bayesian_observe(o,0)
+            agent1.bayesian_observe(o,1)
+        else:
+            agent0.observe(o,0)
+            agent0.observe(o,1)
+            agent1.observe(o,0)
+            agent1.observe(o,1)
+          
         beliefs.append((agent0.s.copy(),agent1.s.copy()))
         
         #print(f"This is the beliefs of agent 0 after observing: {agent0.s}")
@@ -1083,12 +1133,14 @@ def run(agent0, agent1, epochs = int, nr_actions = int, start_beliefs = np.array
 
     epochs_beliefs.append(beliefs)
 
+    epochs_desires.append((agent0.s[1],agent1.s[1]))
+
 
     #print(f"At the end of epoch {e}, agent0 A is: {agent0.A}")
     #print(f"At the end of epoch {e}, agent1 A is: {agent1.A}")
   
 
-  return epochs_positions, epochs_A_matrices, epochs_agent_worlds, epochs_beliefs
+  return epochs_positions, epochs_A_matrices, epochs_agent_worlds, epochs_beliefs, epochs_desires
 
 
 def main():

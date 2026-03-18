@@ -287,7 +287,7 @@ class Matrix_Renderer:
     def update_matrix(self, obs_model):
         self.os_matrix = obs_model
 
-def animate(epoch_positions, cheeses, A_matrices, agent_worlds, epochs_beliefs):
+def animate(epoch_positions, cheeses, A_matrices, agent_worlds, epochs_beliefs, epochs_desires):
     
 
     CELL_SIZE = 100
@@ -323,6 +323,7 @@ def animate(epoch_positions, cheeses, A_matrices, agent_worlds, epochs_beliefs):
     for i in range(len(epoch_positions)):
 
         beliefs = epochs_beliefs[i]
+        desires = epochs_desires[i]
 
         env = EnvState(epoch_positions[i], cheeses[i], agent_worlds[i])
         world_renderer = Renderer(screen, env, env.cheese_pos, COLS, ROWS, CELL_SIZE, GRID_MARGIN)
@@ -340,21 +341,33 @@ def animate(epoch_positions, cheeses, A_matrices, agent_worlds, epochs_beliefs):
 
         curr_bel = beliefs.pop(0)
 
-        matrix_pos = [[ww, 0], [ww+100, 0],[ww+300, 0],[ww+400, 0]]
         matrices = []
         matrix_pos = []
-        for i in range(2):
+        for m in range(2):
             for j in range(2):
                 for k in range(2):
                     for l in range(2):
-                        matrices.append(curr_bel[i][j,k,l,:])
-                        matrix_pos.append([ww+100*l+200*j+400*i,200+100*k])
+                        matrices.append(curr_bel[m][j,k,l,:])
+                        matrix_pos.append([ww+100*l+200*j+400*m,200+100*k])
         
         bm_renderers = []
         for mp, m in zip(matrix_pos, matrices):
             bm_renderers.append(Matrix_Renderer(screen, top_left = mp, os_matrix = m, reduction = None))
 
-    
+
+        mh = 200
+        des_matrices = []
+        des_matrix_pos = []
+        for m in range(2):
+            for j in range(2):
+                for k in range(2):
+                    des_matrices.append(desires[m][j,k])
+                    des_matrix_pos.append([ww+100*k+200*m,mh+200+100*j])
+            
+        dm_renderers = []
+        for mp, m in zip(des_matrix_pos, des_matrices):
+            dm_renderers.append(Matrix_Renderer(screen, top_left = mp, os_matrix = m, reduction = None))
+
     
         running = True
         while running:
@@ -374,7 +387,7 @@ def animate(epoch_positions, cheeses, A_matrices, agent_worlds, epochs_beliefs):
                             world_renderer.sync_targets()
                             curr_bel = beliefs.pop(0)
 
-                            matrix_pos = [[ww, 0], [ww+100, 0],[ww+300, 0],[ww+400, 0]]
+                            
                             matrices = []
                             matrix_pos = []
                             for i in range(2):
@@ -387,6 +400,18 @@ def animate(epoch_positions, cheeses, A_matrices, agent_worlds, epochs_beliefs):
                             bm_renderers = []
                             for mp, m in zip(matrix_pos, matrices):
                                 bm_renderers.append(Matrix_Renderer(screen, top_left = mp, os_matrix = m, reduction = None))
+
+                            des_matrices = []
+                            des_matrix_pos = []
+                            for m in range(2):
+                                for j in range(2):
+                                    for k in range(2):
+                                        des_matrices.append(desires[m][j,k])
+                                        des_matrix_pos.append([ww+100*k+200*m,mh+200+100*j])
+                                
+                            dm_renderers = []
+                            for mp, m in zip(des_matrix_pos, des_matrices):
+                                dm_renderers.append(Matrix_Renderer(screen, top_left = mp, os_matrix = m, reduction = None))
 
                             print("I DID IT")
 
@@ -409,6 +434,9 @@ def animate(epoch_positions, cheeses, A_matrices, agent_worlds, epochs_beliefs):
 
             for bmr in bm_renderers:
                 bmr.render()
+
+            for dmr in dm_renderers:
+                dmr.render()
 
             pygame.display.flip()
 

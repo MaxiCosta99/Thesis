@@ -117,10 +117,10 @@ agent1 = agent(agent1_full_A.copy(), start_B.copy(), copy.deepcopy(full_start_s)
             agent_id = 1, moves_to_go = nr_moves, social = social1, terms = terms1)
 
 
-epochs_positions, epochs_A_matrices, epochs_agent_worlds, epochs_beliefs = run(agent0 = agent0, agent1 = agent1, epochs = epochs, nr_actions = nr_moves, start_beliefs = copy.deepcopy(full_start_s), cheeses = cheeses, exploration_phase = exploration)
+epochs_positions, epochs_A_matrices, epochs_agent_worlds, epochs_beliefs, epochs_desires = run(agent0 = agent0, agent1 = agent1, epochs = epochs, nr_actions = nr_moves, start_beliefs = copy.deepcopy(full_start_s), cheeses = cheeses, exploration_phase = exploration)
 
 #print(epochs_beliefs[0][0][0])
 
 
 
-animate(epochs_positions, cheeses, A_matrices = epochs_A_matrices, agent_worlds = epochs_agent_worlds, epochs_beliefs = epochs_beliefs)
+animate(epochs_positions, cheeses, A_matrices = epochs_A_matrices, agent_worlds = epochs_agent_worlds, epochs_beliefs = epochs_beliefs, epochs_desires = epochs_desires)
