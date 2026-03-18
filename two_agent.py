@@ -32,7 +32,7 @@ class agent:
                little_u_imaginer = bool, u_imagination_breadth = int, u_prob_threshold = float,
                agent_id = int, moves_to_go = int, social = bool, terms = list):
     self.A = A #[my/your]
-    self.s = s #[my/your belief, agent0/agent1, loc, cheeseleft/cheeseright]
+    self.s = s #[my/your belief, agent0cheese, agent1cheese, agent0pos, agetn1pos]
     self.B = B
     self.U = U
     self.goal_states = goal_states #[my/your]
@@ -70,6 +70,27 @@ class agent:
 
     #print(f"This is the updated A: {self.A[0,o,...]}")
 
+  def bayesian_observe(self,o,who):
+
+      whose_A = self.A[who]
+      whose_A_flat = whose_A.reshape(whose_A.shape[0], -1)
+      whose_s = self.s[who]
+      whose_s_shape = whose_s.shape
+      whose_s_flat = whose_s.reshape(-1)
+
+      for i in range(100):
+        temp = whose_A_flat[o]*whose_s_flat
+        whose_s_flat = temp/np.sum(temp, keepdims = True)
+
+      new_s = whose_s_flat
+
+      assert new_s.shape == whose_s_flat.shape
+
+      new_s_orig = new_s.reshape(whose_s_shape)
+
+      self.s[who] = new_s_orig
+
+
 
   def observe(self, o, who):
 
@@ -79,7 +100,6 @@ class agent:
 
       if self.chatty_boy == 1:
         print("No new info")
-
 
 
     elif o == 1:
@@ -99,7 +119,6 @@ class agent:
         print("Agent 0 cheese is on the right")
 
 
-
     elif o == 0:
 
       assert abs(np.sum(self.s[who])-1)<0.01, f"States probs sum, before {who}'s observation {o}: {np.sum(self.s[who])}"
@@ -115,7 +134,6 @@ class agent:
 
       if self.chatty_boy == 1:
         print("Agent 0 cheese is on the left")
-
 
 
     elif o == 2:
@@ -161,8 +179,6 @@ class agent:
         print("Agent 0 is not on the cheese")
 
 
-
-
     elif o == 5:
 
       assert abs(np.sum(self.s[who])-1)<0.01, f"States probs sum, before {who}'s observation {o}: {np.sum(self.s[who])}"
@@ -191,8 +207,6 @@ class agent:
         print("Agent 1 cheese is on the left")"""
 
 
-
-
     elif o == 6:
 
       assert abs(np.sum(self.s[who])-1)<0.01, f"States probs sum, before {who}'s observation {o}: {np.sum(self.s[who])}"
@@ -219,7 +233,6 @@ class agent:
 
       if self.chatty_boy == 1:
         print("Agent 1 cheese is on the right")"""
-
 
 
     elif o == 7:
@@ -883,6 +896,8 @@ def true_A(base, pretrain_strength = float):
 
     agent0_A[4,:,:,0,:] = pretrain_strength
 
+    #INSERT GM ABOUT OTHER POSITION AND OTHER OBSERVATIONS
+
 
     agent1_A = np.ones((11,2,2,4,4))*base
 
@@ -907,12 +922,17 @@ def true_A(base, pretrain_strength = float):
 def run(agent0, agent1, epochs = int, nr_actions = int, start_beliefs = np.array, cheeses = list, exploration_phase = bool):
 
 
-  epochs_positions = []
-  epochs_A_matrices = []
+
+  
+
+  epochs_agent_worlds = [] #save in which world each agent is
+  epochs_positions = [] #true positions of each agent
+  epochs_A_matrices = [] #A matrices of each agent (my, his)
+  epochs_beliefs = []
+  epochs_desires = []
 
   epochs_A_matrices.append((agent0.A.copy(), agent1.A.copy()))
 
-  epochs_agent_worlds = []
 
   for e in range(epochs):
     print("__________________________________")
@@ -934,11 +954,17 @@ def run(agent0, agent1, epochs = int, nr_actions = int, start_beliefs = np.array
 
 
     positions = []
+    beliefs = []
     observationsA = []
     agentselfposA = []
+    desiresA = []
+    
     
     observationsB = []
     agentselfposB = []
+    desiresB = []
+
+
 
     agent0.reason_depth = nr_actions
     agent1.reason_depth = nr_actions
@@ -946,6 +972,10 @@ def run(agent0, agent1, epochs = int, nr_actions = int, start_beliefs = np.array
     agent1.moves_to_go = nr_actions
 
 
+
+    beliefs.append((agent0.s.copy(),agent1.s.copy()))
+
+    #print(f"This is the starting beliefs of agent 0: {agent0.s}")
     for _ in range(nr_actions):
 
       if agent0.agent_id == 0: #if agent0 in env 1 he explores, if agent1 in env 0 he explores
@@ -961,17 +991,22 @@ def run(agent0, agent1, epochs = int, nr_actions = int, start_beliefs = np.array
         agentselfposA.append(agent0.s.copy())
         observationsA.append(o)
 
-        agent0.observe(o,0)
-        agent0.observe(o,1)
-        agent1.observe(o,0)
-        agent1.observe(o,1)
+        agent0.bayesian_observe(o,0)
+        agent0.bayesian_observe(o,1)
+        agent1.bayesian_observe(o,0)
+        agent1.bayesian_observe(o,1)
+        
+        beliefs.append((agent0.s.copy(),agent1.s.copy()))
 
+        #print(f"This is the beliefs of agent 0 after observing: {agent0.s}")
+        #print(f"This is the beliefs of agent 1 after observing: {agent1.s}")
     
 
 
         
         u = agent1.pick_action()
         agent1.act(u)
+        
         #print("This is the action taken by agent 1: " + str(u))
 
         w.change_true_s(agent1, u)
@@ -981,10 +1016,15 @@ def run(agent0, agent1, epochs = int, nr_actions = int, start_beliefs = np.array
         agentselfposB.append(agent1.s.copy())
         observationsB.append(o)
 
-        agent0.observe(o,0)
-        agent0.observe(o,1)
-        agent1.observe(o,0)
-        agent1.observe(o,1)
+        agent0.bayesian_observe(o,0)
+        agent0.bayesian_observe(o,1)
+        agent1.bayesian_observe(o,0)
+        agent1.bayesian_observe(o,1)
+        
+        beliefs.append((agent0.s.copy(),agent1.s.copy()))
+        
+        #print(f"This is the beliefs of agent 0 after observing: {agent0.s}")
+        #print(f"This is the beliefs of agent 1 after observing: {agent1.s}")
 
       else:
         u = agent0.explore()
@@ -1041,10 +1081,14 @@ def run(agent0, agent1, epochs = int, nr_actions = int, start_beliefs = np.array
 
     epochs_A_matrices.append((agent0.A.copy(), agent1.A.copy()))
 
+    epochs_beliefs.append(beliefs)
+
+
     #print(f"At the end of epoch {e}, agent0 A is: {agent0.A}")
     #print(f"At the end of epoch {e}, agent1 A is: {agent1.A}")
+  
 
-  return epochs_positions, epochs_A_matrices, epochs_agent_worlds
+  return epochs_positions, epochs_A_matrices, epochs_agent_worlds, epochs_beliefs
 
 
 def main():

@@ -4,7 +4,22 @@ from two_agent import agent, world, run, true_A
 from two_agent_animator import animate
 
 
-start_B = np.array(([[[0,0,0,0],[1,1,0,0],[0,0,1,0],[0,0,0,1]],[[1,1,0,0],[0,0,0,0],[0,0,1,0],[0,0,0,1]],[[0,0,0,1],[0,1,0,0],[1,0,1,0],[0,0,0,0]],[[0,0,1,0],[0,1,0,0],[0,0,0,0],[1,0,0,1]]]))
+start_B = np.array(([[[0,0,0,0],
+                    [1,1,0,0],
+                    [0,0,1,0],
+                    [0,0,0,1]],
+                    [[1,1,0,0],
+                    [0,0,0,0],
+                    [0,0,1,0],
+                    [0,0,0,1]],
+                    [[0,0,0,1],
+                    [0,1,0,0],
+                    [1,0,1,0],
+                    [0,0,0,0]],
+                    [[0,0,1,0],
+                    [0,1,0,0],
+                    [0,0,0,0],
+                    [1,0,0,1]]]))
 
 
 start_s = np.zeros((2,2,4,4))
@@ -86,7 +101,7 @@ cheeses = [[0,0]]#,[1,0],[0,1],[1,1]]
 epochs = len(cheeses)
 
 
-exploration = True
+exploration = False
 
 
 agent0 = agent(agent0_full_A.copy(), start_B.copy(), copy.deepcopy(full_start_s), U = U.copy(), goal_states = copy.deepcopy(agent0_fullgoals), goal_obs = agent0_fullgoals_obs.copy(),
@@ -102,6 +117,10 @@ agent1 = agent(agent1_full_A.copy(), start_B.copy(), copy.deepcopy(full_start_s)
             agent_id = 1, moves_to_go = nr_moves, social = social1, terms = terms1)
 
 
-epochs_positions, epochs_A_matrices, epochs_agent_worlds = run(agent0 = agent0, agent1 = agent1, epochs = epochs, nr_actions = nr_moves, start_beliefs = copy.deepcopy(full_start_s), cheeses = cheeses, exploration_phase = exploration)
+epochs_positions, epochs_A_matrices, epochs_agent_worlds, epochs_beliefs = run(agent0 = agent0, agent1 = agent1, epochs = epochs, nr_actions = nr_moves, start_beliefs = copy.deepcopy(full_start_s), cheeses = cheeses, exploration_phase = exploration)
 
-animate(epochs_positions, cheeses, A_matrices = epochs_A_matrices, agent_worlds = epochs_agent_worlds)
+#print(epochs_beliefs[0][0][0])
+
+
+
+animate(epochs_positions, cheeses, A_matrices = epochs_A_matrices, agent_worlds = epochs_agent_worlds, epochs_beliefs = epochs_beliefs)

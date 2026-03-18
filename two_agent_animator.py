@@ -3,6 +3,8 @@ import sys
 import numpy as np
 import os
 
+
+
 def save_frame(screen, frame_idx, out_dir="frames"):
     os.makedirs(out_dir, exist_ok=True)
     filename = f"{out_dir}/frame_{frame_idx:05d}.png"
@@ -233,15 +235,18 @@ class Matrix_Renderer:
         self.top_left = top_left
         self.cell_size = cell_size
         self.grid_color = grid_color
-        self.os_matrix = np.einsum(reduction, os_matrix)
-        self.os_matrix = self.os_matrix.reshape(self.os_matrix.shape[0], -1)  # Flatten last dimensions
-        self.os_matrix = self.os_matrix/np.sum(self.os_matrix, axis = 0, keepdims = True)
-        
+        if reduction is not None:
+            self.os_matrix = np.einsum(reduction, os_matrix)
+            self.os_matrix = self.os_matrix.reshape(self.os_matrix.shape[0], -1)  # Flatten last dimensions
+            self.os_matrix = self.os_matrix/np.sum(self.os_matrix, axis = 0, keepdims = True)
+            assert np.allclose(np.sum(self.os_matrix, axis = 0), 1), "Columns of Alpha_matrix must sum to 1" 
+
+        else:
+            self.os_matrix = os_matrix
 
         #print(f"This is the shape of the A matrix: {self.os_matrix.shape}")
 
-        assert np.allclose(np.sum(self.os_matrix, axis = 0), 1), "Columns of Alpha_matrix must sum to 1" 
-
+        
 
     def render(self):
         rows = len(self.os_matrix)        # |O|
@@ -282,7 +287,7 @@ class Matrix_Renderer:
     def update_matrix(self, obs_model):
         self.os_matrix = obs_model
 
-def animate(epoch_positions, cheeses, A_matrices, agent_worlds):
+def animate(epoch_positions, cheeses, A_matrices, agent_worlds, epochs_beliefs):
     
 
     CELL_SIZE = 100
@@ -317,6 +322,8 @@ def animate(epoch_positions, cheeses, A_matrices, agent_worlds):
 
     for i in range(len(epoch_positions)):
 
+        beliefs = epochs_beliefs[i]
+
         env = EnvState(epoch_positions[i], cheeses[i], agent_worlds[i])
         world_renderer = Renderer(screen, env, env.cheese_pos, COLS, ROWS, CELL_SIZE, GRID_MARGIN)
         
@@ -329,41 +336,26 @@ def animate(epoch_positions, cheeses, A_matrices, agent_worlds):
 
         matrix_renderers = []
         for mp, r, m in zip(matrix_pos, reductions, matrices):
-            print(f"matrix position {mp}")
-            print(f"Reduction{r}")
-            #print(f"Matrix: {m}")
-            
             matrix_renderers.append(Matrix_Renderer(screen, top_left = mp, os_matrix = m, reduction = r))
 
+        curr_bel = beliefs.pop(0)
 
-        """
-        agent0selfA_renderer = Matrix_Renderer(
-            screen=screen,
-            top_left=(0, ROWS*CELL_SIZE+TINY_BORDER), 
-            os_matrix = A_matrices[i][0][0],
-            reduction = "oijkl -> oik"
-        )
+        matrix_pos = [[ww, 0], [ww+100, 0],[ww+300, 0],[ww+400, 0]]
+        matrices = []
+        matrix_pos = []
+        for i in range(2):
+            for j in range(2):
+                for k in range(2):
+                    for l in range(2):
+                        matrices.append(curr_bel[i][j,k,l,:])
+                        matrix_pos.append([ww+100*l+200*j+400*i,200+100*k])
         
-        agent0otherA_renderer = Matrix_Renderer(
-            screen=screen,
-            top_left=(0, ROWS*CELL_SIZE+MATRIX_HEIGHT+2*TINY_BORDER),  
-            os_matrix = A_matrices[i][0][1],
-            reduction = "oijkl -> ojl"
-        )     
+        bm_renderers = []
+        for mp, m in zip(matrix_pos, matrices):
+            bm_renderers.append(Matrix_Renderer(screen, top_left = mp, os_matrix = m, reduction = None))
 
-        agent1selfA_renderer = Matrix_Renderer(
-            screen=screen,
-            top_left=(400, ROWS*CELL_SIZE+TINY_BORDER),  
-            os_matrix = A_matrices[i][1][0],
-            reduction = "oijkl -> ojl"
-        )
     
-        agent1otherA_renderer = Matrix_Renderer(
-            screen=screen,
-            top_left=(400, ROWS*CELL_SIZE+MATRIX_HEIGHT+2*TINY_BORDER),  
-            os_matrix = A_matrices[i][1][1],
-            reduction = "oijkl -> oik"
-        )"""
+    
         running = True
         while running:
             clock.tick(FPS)
@@ -378,19 +370,34 @@ def animate(epoch_positions, cheeses, A_matrices, agent_worlds):
 
                     if event.key == pygame.K_SPACE:
                         if not world_renderer.is_animating():
-                            try:
-                                env.step()
-                                world_renderer.sync_targets()
-                            except:
-                                running = False
+                            env.step()
+                            world_renderer.sync_targets()
+                            curr_bel = beliefs.pop(0)
+
+                            matrix_pos = [[ww, 0], [ww+100, 0],[ww+300, 0],[ww+400, 0]]
+                            matrices = []
+                            matrix_pos = []
+                            for i in range(2):
+                                for j in range(2):
+                                    for k in range(2):
+                                        for l in range(2):
+                                            matrices.append(curr_bel[i][j,k,l,:])
+                                            matrix_pos.append([ww+100*l+200*j+400*i,200+100*k])
+                            
+                            bm_renderers = []
+                            for mp, m in zip(matrix_pos, matrices):
+                                bm_renderers.append(Matrix_Renderer(screen, top_left = mp, os_matrix = m, reduction = None))
+
+                            print("I DID IT")
+
+                            
 
                     if event.key == pygame.K_p:
                         #save_frame(screen, step_idx)
                         #step_idx += 1
                         print(f"I just saved frame {step_idx}")
 
-                            
-
+            
 
 
             world_renderer.update(LERP_ALPHA)
@@ -398,13 +405,12 @@ def animate(epoch_positions, cheeses, A_matrices, agent_worlds):
             
             for mr in matrix_renderers:
                 mr.render()
-            #agent0selfA_renderer.render()
-            #agent0otherA_renderer.render()
-            #agent1selfA_renderer.render()
-            #agent1otherA_renderer.render()
-            pygame.display.flip()
-
             
+
+            for bmr in bm_renderers:
+                bmr.render()
+
+            pygame.display.flip()
 
 
     pygame.quit()
