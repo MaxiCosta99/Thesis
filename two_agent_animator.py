@@ -12,9 +12,9 @@ def save_frame(screen, frame_idx, out_dir="frames"):
 def lerp(a, b, t):
     return a + t * (b - a)
 
-def grid_origin(grid_idx, COLS, CELL_SIZE, GRID_MARGIN):
-    x = grid_idx * (COLS * CELL_SIZE + GRID_MARGIN)
-    return x, 0
+def grid_origin(grid_idx, ROWS, CELL_SIZE, GRID_MARGIN):
+    y = grid_idx * (ROWS * CELL_SIZE + GRID_MARGIN)
+    return 0, y
 
 def cell_center(origin, row, col, CELL_SIZE):
     ox, oy = origin
@@ -72,14 +72,14 @@ class Renderer:
         self.agent1_world = env.agent_worlds[1]
 
         for i in range(2):
-            origin = grid_origin(i,COLS, CELL_SIZE, GRID_MARGIN)
+            origin = grid_origin(i,ROWS, CELL_SIZE, GRID_MARGIN)
             p = cell_center(origin, *env.agent_pos[i], CELL_SIZE)
             self.render_pos.append(p.copy())
             self.target_pos.append(p.copy())
 
     def sync_targets(self):
         for i in range(2):
-            origin = grid_origin(i, self.COLS, self.CELL_SIZE, self.GRID_MARGIN)
+            origin = grid_origin(i, self.ROWS, self.CELL_SIZE, self.GRID_MARGIN)
             self.target_pos[i] = cell_center(
                 origin, *self.env.agent_pos[i], self.CELL_SIZE
             )
@@ -177,7 +177,7 @@ class Renderer:
 
     def draw_cheese(self):
         for i in range(2):
-            origin = grid_origin(i, self.COLS, self.CELL_SIZE, self.GRID_MARGIN)
+            origin = grid_origin(i, self.ROWS, self.CELL_SIZE, self.GRID_MARGIN)
             pygame.draw.circle(
                 self.screen,
                 self.CHEESE_COLOR,
@@ -187,7 +187,7 @@ class Renderer:
 
     def draw_clue(self):
         for i in range(2):
-            origin = grid_origin(i, self.COLS, self.CELL_SIZE, self.GRID_MARGIN)
+            origin = grid_origin(i, self.ROWS, self.CELL_SIZE, self.GRID_MARGIN)
             pygame.draw.circle(
                 self.screen,
                 self.CLUE_COLOR,
@@ -200,7 +200,7 @@ class Renderer:
 
         for i in range(2):
             self.draw_grid(
-                grid_origin(i, COLS, CELL_SIZE, GRID_MARGIN),
+                grid_origin(i, ROWS, CELL_SIZE, GRID_MARGIN),
                 ROWS, COLS, CELL_SIZE, GRID_COLOR, ACTIVE_BORDER,
                 active=(self.env.turn == i)
             )
@@ -241,6 +241,7 @@ class Matrix_Renderer:
         #print(f"This is the shape of the A matrix: {self.os_matrix.shape}")
 
         assert np.allclose(np.sum(self.os_matrix, axis = 0), 1), "Columns of Alpha_matrix must sum to 1" 
+
 
     def render(self):
         rows = len(self.os_matrix)        # |O|
@@ -293,16 +294,17 @@ def animate(epoch_positions, cheeses, A_matrices, agent_worlds):
     FPS = 60
     LERP_ALPHA = 0.2
 
-    WINDOW_WIDTH = 2 * COLS * CELL_SIZE + GRID_MARGIN
-    WINDOW_HEIGHT = ROWS * CELL_SIZE + 500 #EXTRA SPACE FOR MATRICES
+    WINDOW_WIDTH = 2 * COLS * CELL_SIZE + GRID_MARGIN + 500
+    WINDOW_HEIGHT = ROWS * CELL_SIZE + 500# + 500 #EXTRA SPACE FOR MATRICES
+
+    ww = COLS * CELL_SIZE + GRID_MARGIN
+    wh = 2 * ROWS * CELL_SIZE + GRID_MARGIN
 
     BG_COLOR = (25, 25, 25)
     GRID_COLOR = (90, 90, 90)
     AGENT_COLORS = [(220, 80, 80), (80, 160, 220)]
     ACTIVE_BORDER = (200, 200, 80)
 
-    TINY_BORDER = 10
-    MATRIX_HEIGHT = 200
 
     pygame.init()
     screen = pygame.display.set_mode(
@@ -318,6 +320,23 @@ def animate(epoch_positions, cheeses, A_matrices, agent_worlds):
         env = EnvState(epoch_positions[i], cheeses[i], agent_worlds[i])
         world_renderer = Renderer(screen, env, env.cheese_pos, COLS, ROWS, CELL_SIZE, GRID_MARGIN)
         
+        matrix_pos = [[ww, 0], [ww+100, 0],[ww+300, 0],[ww+400, 0]]
+        reductions = ["oijkl -> oik", "oijkl -> ojl", "oijkl -> ojl",  "oijkl -> oik"]
+        matrices = [A_matrices[i][0][0],
+                    A_matrices[i][0][1],
+                    A_matrices[i][1][0],
+                    A_matrices[i][1][1]]
+
+        matrix_renderers = []
+        for mp, r, m in zip(matrix_pos, reductions, matrices):
+            print(f"matrix position {mp}")
+            print(f"Reduction{r}")
+            #print(f"Matrix: {m}")
+            
+            matrix_renderers.append(Matrix_Renderer(screen, top_left = mp, os_matrix = m, reduction = r))
+
+
+        """
         agent0selfA_renderer = Matrix_Renderer(
             screen=screen,
             top_left=(0, ROWS*CELL_SIZE+TINY_BORDER), 
@@ -344,7 +363,7 @@ def animate(epoch_positions, cheeses, A_matrices, agent_worlds):
             top_left=(400, ROWS*CELL_SIZE+MATRIX_HEIGHT+2*TINY_BORDER),  
             os_matrix = A_matrices[i][1][1],
             reduction = "oijkl -> oik"
-        )
+        )"""
         running = True
         while running:
             clock.tick(FPS)
@@ -366,8 +385,8 @@ def animate(epoch_positions, cheeses, A_matrices, agent_worlds):
                                 running = False
 
                     if event.key == pygame.K_p:
-                        save_frame(screen, step_idx)
-                        step_idx += 1
+                        #save_frame(screen, step_idx)
+                        #step_idx += 1
                         print(f"I just saved frame {step_idx}")
 
                             
@@ -376,10 +395,13 @@ def animate(epoch_positions, cheeses, A_matrices, agent_worlds):
 
             world_renderer.update(LERP_ALPHA)
             world_renderer.render(BG_COLOR, GRID_COLOR, AGENT_COLORS, CELL_SIZE, ACTIVE_BORDER, COLS, ROWS, GRID_MARGIN)
-            agent0selfA_renderer.render()
-            agent0otherA_renderer.render()
-            agent1selfA_renderer.render()
-            agent1otherA_renderer.render()
+            
+            for mr in matrix_renderers:
+                mr.render()
+            #agent0selfA_renderer.render()
+            #agent0otherA_renderer.render()
+            #agent1selfA_renderer.render()
+            #agent1otherA_renderer.render()
             pygame.display.flip()
 
             
