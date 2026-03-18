@@ -56,8 +56,12 @@ agent1_goals[:,0,:,3] = 1e-10
 agent1_goals[:,1,:,2] = 1e-10
 agent1_goals = agent1_goals/np.sum(agent1_goals)
 
-agent0_fullgoals = np.stack((agent0_goals, agent1_goals), axis = 0)
-agent1_fullgoals = np.stack((agent1_goals, agent0_goals), axis = 0)
+uncertain_goals = np.ones((2,2,4,4))
+uncertain_goals = uncertain_goals/np.sum(uncertain_goals)
+
+agent0_fullgoals = np.stack((agent0_goals, uncertain_goals), axis = 0)
+agent1_fullgoals = np.stack((agent1_goals, uncertain_goals), axis = 0)
+
 
 
 
@@ -89,15 +93,15 @@ u_prob_threshold = 0.1
 social0 = True
 social1 = False
 
-terms0 = ["risk_obs", "nov"]
-terms1 = ["risk_obs", "nov"]
+terms0 = ["risk", "nov"]
+terms1 = ["risk", "nov"]
 
 
 nr_moves = 3
 
 
-#cheeses = [[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1]]
-cheeses = [[0,0]]#,[1,0],[0,1],[1,1]]
+cheeses = [[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1]]
+#cheeses = [[0,0],[1,0],[0,1],[1,1]]
 epochs = len(cheeses)
 
 

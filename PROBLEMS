@@ -14,3 +14,18 @@ SINGLE AGENT MAIN NOW OUTDATED
     NO REASON DEPTH CHANGE
     INTRODUCE AGENT REINITIALIZATION
     ALSO REDO THE TERMS CHANGE
+
+
+
+Current situazia
+    Both know both observations and both actions
+
+
+Transform to grey now does not assure p is between 0 and 1
+
+Found a bug, the update A function changes the state, forgot a .copy() somewhere
+    I suspect its the observation function, still to double check
+
+
+Why do learned goals not perform as well as given goals?
+    They are the same distribution after a while

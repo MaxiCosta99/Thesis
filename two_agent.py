@@ -70,6 +70,11 @@ class agent:
 
     #print(f"This is the updated A: {self.A[0,o,...]}")
 
+  def update_desires_other(self):
+      self.goal_states[1] = self.goal_states[1].copy()+self.s[1].copy()
+      self.goal_states[1] = self.goal_states[1]/np.sum(self.goal_states[1])
+
+
   def bayesian_observe(self,o,who):
 
       whose_A = self.A[who].copy()
@@ -968,7 +973,7 @@ def run(agent0, agent1, epochs = int, nr_actions = int, start_beliefs = np.array
   epochs_desires = []
 
   epochs_A_matrices.append((agent0.A.copy(), agent1.A.copy()))
-  epochs_desires.append((agent0.goal_states[1],agent1.goal_states[1]))
+  epochs_desires.append((agent0.goal_states.copy(),agent1.goal_states.copy()))
 
 
   for e in range(epochs):
@@ -1111,7 +1116,9 @@ def run(agent0, agent1, epochs = int, nr_actions = int, start_beliefs = np.array
         agent1.observe(o,0)
         agent1.observe(o,1)
 
-
+    if agent0.agent_id == 0: #update only when not exploring
+        agent0.update_desires_other()
+        agent1.update_desires_other()
 
     
     for (o,s) in zip(observationsA, agentselfposA):
@@ -1127,13 +1134,14 @@ def run(agent0, agent1, epochs = int, nr_actions = int, start_beliefs = np.array
           agent1.update_A(o,s,who=1)
     
     
+    
     epochs_positions.append(positions)
 
     epochs_A_matrices.append((agent0.A.copy(), agent1.A.copy()))
 
     epochs_beliefs.append(beliefs)
 
-    epochs_desires.append((agent0.s[1],agent1.s[1]))
+    epochs_desires.append((agent0.goal_states.copy(),agent1.goal_states.copy()))
 
 
     #print(f"At the end of epoch {e}, agent0 A is: {agent0.A}")
