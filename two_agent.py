@@ -53,9 +53,24 @@ class agent:
     self.social = social
     self.terms = terms
 
+  
+  def sample(self, dcm):
+      """
+      dcm is dirichlet counts matrix
+      """
+      dcm_shape = dcm.shape
+      dcm_flat = dcm.reshape(-1)
+      
+      sample = dcm_flat/np.sum(dcm_flat)
+      
+      out = sample.reshape(dcm_shape)
+      return out
+
+
 
   def update_A(self, o, s, who):
     
+    backup = self.s.copy()
 
     self.s = s.copy()
     self.observe(o,0) #infer which state we were in
@@ -70,9 +85,11 @@ class agent:
 
     #print(f"This is the updated A: {self.A[0,o,...]}")
 
+    self.s = backup
+
   def update_desires_other(self):
       self.goal_states[1] = self.goal_states[1].copy()+self.s[1].copy()
-      self.goal_states[1] = self.goal_states[1]/np.sum(self.goal_states[1])
+      #self.goal_states[1] = self.goal_states[1]/np.sum(self.goal_states[1])
 
 
   def bayesian_observe(self,o,who):
@@ -390,7 +407,7 @@ class agent:
 
   def compute_risk(self,who):
     whose_s = self.s[who].copy()
-    whose_goals = self.goal_states[who]
+    whose_goals = self.sample(self.goal_states[who].copy())
 
 
     #print(f"These is {self.agent_id}'s perspective of {who} goal : {whose_goals}")
@@ -513,9 +530,11 @@ class agent:
 
     #print(f"the actions imagined are: {u_imagined}")
 
+    assert len(u_imagined) >0, "No action was imagined"
+
     assert abs(np.sum(pu_imagined)-1)<0.01,f"Actions probabilities sum to {np.sum(pu_imagined)}"
 
-    assert len(u_imagined) >0, "No action was imagined"
+    
 
     return u_imagined, pu_imagined
 
@@ -1032,7 +1051,7 @@ def run(agent0, agent1, epochs = int, nr_actions = int, start_beliefs = np.array
         agentselfposA.append(agent0.s.copy())
         observationsA.append(o)
 
-        bayesian = True
+        bayesian = False
         if bayesian is True:
             agent0.bayesian_observe(o,0)
             agent0.bayesian_observe(o,1)
@@ -1116,9 +1135,6 @@ def run(agent0, agent1, epochs = int, nr_actions = int, start_beliefs = np.array
         agent1.observe(o,0)
         agent1.observe(o,1)
 
-    if agent0.agent_id == 0: #update only when not exploring
-        agent0.update_desires_other()
-        agent1.update_desires_other()
 
     
     for (o,s) in zip(observationsA, agentselfposA):
@@ -1132,6 +1148,11 @@ def run(agent0, agent1, epochs = int, nr_actions = int, start_beliefs = np.array
           agent1.update_A(o,s,who=0)
         else:
           agent1.update_A(o,s,who=1)
+
+    
+    if agent0.agent_id == 0: #update only when not exploring
+        agent0.update_desires_other()
+        agent1.update_desires_other()
     
     
     

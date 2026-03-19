@@ -46,7 +46,7 @@ agent0_goals[0,:,2,:] = 1e1
 agent0_goals[1,:,3,:] = 1e1
 agent0_goals[0,:,3,:] = 1e-10
 agent0_goals[1,:,2,:] = 1e-10
-agent0_goals = agent0_goals/np.sum(agent0_goals)
+#agent0_goals = agent0_goals/np.sum(agent0_goals)
 
 agent1_goals = np.ones(start_s.shape)
 
@@ -54,13 +54,30 @@ agent1_goals[:,0,:,2] = 1e1
 agent1_goals[:,1,:,3] = 1e1
 agent1_goals[:,0,:,3] = 1e-10
 agent1_goals[:,1,:,2] = 1e-10
-agent1_goals = agent1_goals/np.sum(agent1_goals)
+#agent1_goals = agent1_goals/np.sum(agent1_goals)
 
 uncertain_goals = np.ones((2,2,4,4))
 uncertain_goals = uncertain_goals/np.sum(uncertain_goals)
 
-agent0_fullgoals = np.stack((agent0_goals, uncertain_goals), axis = 0)
-agent1_fullgoals = np.stack((agent1_goals, uncertain_goals), axis = 0)
+test0_goals = np.ones((2,2,4,4))*1e-5
+test1_goals = np.ones((2,2,4,4))*1e-5
+test0_goals[0,:,3,:] = 1e-10
+test0_goals[1,:,2,:] = 1e-10
+test1_goals[:,0,:,3] = 1e-10
+test1_goals[:,1,:,2] = 1e-10
+
+#test_goals[0,0,2,2] = 1e1
+#test_goals[0,1,2,3] = 1e1
+#test_goals[1,0,3,2] = 1e1
+#test_goals[1,1,3,3] = 1e1
+#test_goals0 = test_goals0/np.sum(test_goals0)
+#test_goals1 = test_goals1/np.sum(test_goals1)
+
+
+agent0_fullgoals = np.stack((agent0_goals, test1_goals), axis = 0)
+agent1_fullgoals = np.stack((agent1_goals, test0_goals), axis = 0)
+
+
 
 
 
@@ -100,7 +117,7 @@ terms1 = ["risk", "nov"]
 nr_moves = 3
 
 
-cheeses = [[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1]]
+cheeses = [[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1]]#,[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1]]
 #cheeses = [[0,0],[1,0],[0,1],[1,1]]
 epochs = len(cheeses)
 

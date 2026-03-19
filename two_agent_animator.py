@@ -2,7 +2,19 @@ import pygame
 import sys
 import numpy as np
 import os
+import matplotlib.cm as cm
 
+cmap = cm.get_cmap('viridis')
+
+def stab_p(p):
+    eps = 1e-6
+    pmax = 1
+    p_new = (np.log(p+eps)-np.log(eps))/(np.log(pmax+eps)-np.log(eps))
+    return p_new
+
+def prob_to_color(p):
+    r, g, b, _ = cmap(stab_p(p))
+    return int(r*255), int(g*255), int(b*255)
 
 
 def save_frame(screen, frame_idx, out_dir="frames"):
@@ -257,7 +269,8 @@ class Matrix_Renderer:
         for o in range(rows):
             for s in range(cols):
                 p = self.os_matrix[o][s]
-                color = prob_to_gray(p)
+                #color = prob_to_gray(p)
+                color = prob_to_color(p)
 
                 rect = pygame.Rect(
                     ox + s * self.cell_size,
@@ -406,6 +419,8 @@ def animate(epoch_positions, cheeses, A_matrices, agent_worlds, epochs_beliefs, 
                     
                             except:
                                 running = False
+                                print(f"This are the remaining remaining beliefs: {beliefs} ")
+                
                             
 
                     if event.key == pygame.K_p:

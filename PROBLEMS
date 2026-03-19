@@ -16,16 +16,16 @@ SINGLE AGENT MAIN NOW OUTDATED
     ALSO REDO THE TERMS CHANGE
 
 
+I have a bayesian term to use bayesian inference, to remove it
 
 Current situazia
     Both know both observations and both actions
 
 
 Transform to grey now does not assure p is between 0 and 1
-
-Found a bug, the update A function changes the state, forgot a .copy() somewhere
-    I suspect its the observation function, still to double check
+    NOT USING THIS ANYMORE
 
 
 Why do learned goals not perform as well as given goals?
     They are the same distribution after a while
+        New cmap plot shows they are not
