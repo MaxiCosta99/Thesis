@@ -1,4 +1,5 @@
 import numpy as np
+from utils import EM
 
 def softmax(x, beta = 1):
   return np.exp(-x/beta)/np.sum(np.exp(-x/beta))
@@ -1150,9 +1151,9 @@ def run(agent0, agent1, epochs = int, nr_actions = int, start_beliefs = np.array
           agent1.update_A(o,s,who=1)
 
     
-    if agent0.agent_id == 0: #update only when not exploring
+    """if agent0.agent_id == 0: #update only when not exploring DO NOT USE THIS UPDATER
         agent0.update_desires_other()
-        agent1.update_desires_other()
+        agent1.update_desires_other()"""
     
     
     

@@ -28,109 +28,144 @@ def backward(obs, acts, start, tm, gm):
     return backward_pass
 
 
-def Estep(obs, acts, start, end, tm, gm):
+def Estep(obs_eps, acts_eps, start, end, tm, gm):
 
-    fp = forward(obs, acts, start, tm, gm)
-    bp = backward(obs, acts, end, tm, gm)
+    num_eps = len(obs_eps)
+    num_visits = len(obs_eps[0])+1
+    num_states = gm.shape[1]
 
-    unnorm_inf_states = fp*bp
-    inf_states = unnorm_inf_states/np.sum(unnorm_inf_states, axis = 1, keepdims = True)
-
-    return inf_states
-
-def Mstep(inf_states, gm, obs):
     
+    inf_states_eps = np.zeros((num_eps, num_visits, num_states))
 
-    for i in range(inf_states.shape[0]-1):
-        gm[obs[i]] = gm[obs[i]] + inf_states[i+1]
+    for i, (obs, acts) in enumerate(zip(obs_eps, acts_eps)):
+        
+        fp = forward(obs, acts, start, tm, gm)
+        bp = backward(obs, acts, end, tm, gm)
+        unnorm_inf_states = fp*bp
+        inf_states = unnorm_inf_states/np.sum(unnorm_inf_states, axis = 1, keepdims = True)
+        inf_states_eps[i] = inf_states
 
-    norm_gm = gm/np.sum(gm, axis = 0, keepdims = True)
+    return inf_states_eps
+
+def Mstep(inf_states_eps, gm, obs_eps):
+    
+    for inf_states, obs in zip(inf_states_eps, obs_eps): 
+        for i in range(inf_states.shape[0]-1):
+            gm[obs[i]] = gm[obs[i]] + inf_states[i+1]
+
+    norm_gm = gm/np.sum(gm + 0.01, axis = 0, keepdims = True)
 
     return norm_gm
 
 
-def EM(obs, acts, start, end, tm, gm, num_steps):
 
-    flattened_gm = gm.reshape(gm.shape[0], -1)
-    gm = flattened_gm/np.sum(flattened_gm, axis = 0, keepdims = True)
+def unnorm_Mstep(inf_states_eps, gm, obs_eps):
+    
+    for inf_states, obs in zip(inf_states_eps, obs_eps): 
+        for i in range(inf_states.shape[0]-1):
+            gm[obs[i]] = gm[obs[i]] + inf_states[i+1]
 
+    unnorm_gm = gm
+
+    return unnorm_gm
+
+
+def EM(obs_eps, acts_eps, tm_unres, gm, num_steps):
+
+    
+    tm = np.zeros((tm_unres.shape[0],2*tm_unres.shape[1], 2*tm_unres.shape[2]))
+
+    for i in range(tm_unres.shape[0]):
+        tm[i] = np.block([[tm_unres[i], np.zeros(tm_unres[i].shape)],
+                            [np.zeros(tm_unres[i].shape), tm_unres[i]]])
+
+    
+    start = np.random.uniform(0,1,8)
+    start = start/np.sum(start)
+
+    end = np.random.uniform(0,1,8)
+    end = end/np.sum(end)
+
+    gm_shape = gm.shape
+
+    flat_gm = gm.reshape(gm.shape[0], -1)
+    EM_gm = flat_gm/np.sum(flat_gm+0.01, axis = 0, keepdims = True)
+
+
+    #test_gm = np.zeros(gm_shape)
 
     for _ in range(num_steps):
         
-        inf_states = Estep(obs, acts, start, end, tm, gm)
+        inf_states = Estep(obs_eps, acts_eps, start, end, tm, EM_gm)
 
-        gm = Mstep(inf_states, gm, obs)
+        EM_gm = Mstep(inf_states, EM_gm, obs_eps)
 
+    unnorm_gm = unnorm_Mstep(inf_states, flat_gm, obs_eps)
 
-    return gm
+    reshaped_gm = unnorm_gm.reshape(gm_shape)
 
-
-
-start_B = np.array(([[[0,0,0,0],
-                    [1,1,0,0],
-                    [0,0,1,0],
-                    [0,0,0,1]],
-                    [[1,1,0,0],
-                    [0,0,0,0],
-                    [0,0,1,0],
-                    [0,0,0,1]],
-                    [[0,0,0,1],
-                    [0,1,0,0],
-                    [1,0,1,0],
-                    [0,0,0,0]],
-                    [[0,0,1,0],
-                    [0,1,0,0],
-                    [0,0,0,0],
-                    [1,0,0,1]]]))
+    return reshaped_gm
 
 
+if __name__ == "__main__":
 
-tm = np.zeros((start_B.shape[0],2*start_B.shape[1], 2*start_B.shape[2]))
-
-
-for i in range(start_B.shape[0]):
-    tm[i] = np.block([[start_B[i], np.zeros(start_B[i].shape)],
-                        [np.zeros(start_B[i].shape), start_B[i]]])
-
-
-start = np.random.uniform(0,1,8)
-start = start/np.sum(start)
-
-end = np.random.uniform(0,1,8)
-end = end/np.sum(end)
-
-"""gm = np.random.uniform(0,1,(5,8))
-gm = gm/np.sum(gm, axis = 0, keepdims = True)"""
-
-gm = np.ones((5,8))
-gm[0,1] = 10
-gm[1,5] = 10
-gm[2,2] = 10
-gm[2,7] = 10
-gm[3,3] = 10
-gm[3,6] = 10
-gm[4,0] = 10
-gm[4,4] = 10
-
-gm = gm/np.sum(gm, axis = 0, keepdims = True)
-
-acts = [0,1,2,3,
-        0,1,3,2,
-        0,1,2,3,
-        0,1,3,2]
-
-obs = [0,4,2,4,
-       1,4,2,4,
-       0,4,3,4,
-       1,4,3,4]
-
-num_steps = 1000
-
-gm = EM(obs, acts, start, end, tm, gm, num_steps)
+    tm = np.array(([[[0,0,0,0],
+                        [1,1,0,0],
+                        [0,0,1,0],
+                        [0,0,0,1]],
+                        [[1,1,0,0],
+                        [0,0,0,0],
+                        [0,0,1,0],
+                        [0,0,0,1]],
+                        [[0,0,0,1],
+                        [0,1,0,0],
+                        [1,0,1,0],
+                        [0,0,0,0]],
+                        [[0,0,1,0],
+                        [0,1,0,0],
+                        [0,0,0,0],
+                        [1,0,0,1]]]))
 
 
 
-print(np.round(gm,2))
+    gm = np.random.uniform(0,1,(5,8))
+    gm = gm/np.sum(gm, axis = 0, keepdims = True)
+
+    """gm = np.ones((5,8))
+    gm[0,1] = 10
+    gm[1,5] = 10
+    gm[2,2] = 10
+    gm[2,7] = 10
+    gm[3,3] = 10
+    gm[3,6] = 10
+    gm[4,0] = 10
+    gm[4,4] = 10"""
+
+    gm = gm/np.sum(gm, axis = 0, keepdims = True)
+
+    acts = [[0,1,2,3],
+            [0,1,3,2],
+            [0,1,2,3],
+            [0,1,3,2]]
+
+    obs = [[0,4,2,4],
+        [1,4,2,4],
+        [1,4,3,4],
+        [0,4,3,4]]
+
+    num_steps = 10000
+
+    gm = EM(obs, acts, tm, gm, num_steps)
+
+    
+
+    print(np.round(gm,0))
+
+    gm = EM(obs, acts, tm, gm, num_steps)
+
+
+
+    print(np.round(gm,0))
 
 
 
