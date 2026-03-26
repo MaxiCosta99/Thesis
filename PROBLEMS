@@ -29,3 +29,10 @@ Transform to grey now does not assure p is between 0 and 1
 Why do learned goals not perform as well as given goals?
     They are the same distribution after a while
         New cmap plot shows they are not
+
+Should disentangle GM A, one with 5 obs for env1 and one with 7 obs for env2
+    when performing inference use GM of respective world
+    or obs of respective world 
+
+obs 7 (and possibly 2,3,8) have problems
+    need fixing 

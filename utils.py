@@ -42,7 +42,23 @@ def Estep(obs_eps, acts_eps, start, end, tm, gm):
         fp = forward(obs, acts, start, tm, gm)
         bp = backward(obs, acts, end, tm, gm)
         unnorm_inf_states = fp*bp
+
         inf_states = unnorm_inf_states/np.sum(unnorm_inf_states, axis = 1, keepdims = True)
+
+        """
+        lx = np.sum(inf_states[:,0:4], axis = 1)
+        rx = np.sum(inf_states[:,4:8], axis = 1)
+
+        conditions = lx>rx
+ 
+
+        for cond, state in zip(conditions, inf_states):
+            if cond:
+                state[4:] = 0
+            else:
+                state[:4] = 0"""
+
+
         inf_states_eps[i] = inf_states
 
     return inf_states_eps
@@ -70,7 +86,7 @@ def unnorm_Mstep(inf_states_eps, gm, obs_eps):
     return unnorm_gm
 
 
-def EM(obs_eps, acts_eps, tm_unres, gm, num_steps):
+def EM(obs_eps, acts_eps, tm_unres, gm, start, end, num_steps):
 
     
     tm = np.zeros((tm_unres.shape[0],2*tm_unres.shape[1], 2*tm_unres.shape[2]))
@@ -80,16 +96,29 @@ def EM(obs_eps, acts_eps, tm_unres, gm, num_steps):
                             [np.zeros(tm_unres[i].shape), tm_unres[i]]])
 
     
-    start = np.random.uniform(0,1,8)
+    #np.random.seed(0)
+
+    
+    start = np.random.beta(10,1,(4,2)) #in case I don't want to use init
+    start = start.reshape(-1)+0.01
     start = start/np.sum(start)
 
-    end = np.random.uniform(0,1,8)
+    end = np.random.beta(10,1,(4,2)) #in case I don't want to use init
+    end = end.reshape(-1)+0.01 
     end = end/np.sum(end)
 
+    
+    gm = np.random.beta(10,1,(5,4,2))
+    gm = gm/np.sum(gm, axis = 0, keepdims = True)
+
     gm_shape = gm.shape
+    
+
 
     flat_gm = gm.reshape(gm.shape[0], -1)
     EM_gm = flat_gm/np.sum(flat_gm+0.01, axis = 0, keepdims = True)
+
+    agent_gm = EM_gm.copy() #which dirichlet GM the agent updates, for now the random start
 
 
     #test_gm = np.zeros(gm_shape)
@@ -100,11 +129,39 @@ def EM(obs_eps, acts_eps, tm_unres, gm, num_steps):
 
         EM_gm = Mstep(inf_states, EM_gm, obs_eps)
 
-    unnorm_gm = unnorm_Mstep(inf_states, flat_gm, obs_eps)
+    unnorm_gm = unnorm_Mstep(inf_states, agent_gm, obs_eps)
 
     reshaped_gm = unnorm_gm.reshape(gm_shape)
 
     return reshaped_gm
+
+
+if __name__ == "__a test__":
+
+    x = np.array([[1,1,1,1,0,0,0.5,0.3],
+                    [1,1,1,1,0,0.2,0,0.4],
+                    [1,1,1,1,0,0,0,0],
+                    [0,0.5,0,0,1,1,1,1]])
+
+    
+    lx = np.sum(x[:,0:4], axis = 1)
+    rx = np.sum(x[:,4:8], axis = 1)
+
+    conditions = lx>rx
+ 
+
+    for cond, state in zip(conditions, x):
+        if cond:
+            state[4:] = 0
+        else:
+            state[:4] = 0
+
+    print(x)
+
+
+
+
+
 
 
 if __name__ == "__main__":
@@ -155,17 +212,17 @@ if __name__ == "__main__":
 
     num_steps = 10000
 
-    gm = EM(obs, acts, tm, gm, num_steps)
+    gm = EM(obs, acts, tm, gm, None, None, num_steps)
 
     
 
     print(np.round(gm,0))
 
-    gm = EM(obs, acts, tm, gm, num_steps)
+    #gm = EM(obs, acts, tm, gm, None, None, num_steps)
 
 
 
-    print(np.round(gm,0))
+    #print(np.round(gm,0))
 
 
 

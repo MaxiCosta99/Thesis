@@ -321,9 +321,9 @@ class agent:
 
     def change_reason_depth(self):
 
-    if self.reason_depth > self.moves_to_go:
-      self.reason_depth = self.reason_depth - 1
-      assert self.reason_depth == self.moves_to_go, "SOMETHING IS SMELLY"
+        if self.reason_depth > self.moves_to_go:
+          self.reason_depth = self.reason_depth - 1
+          assert self.reason_depth == self.moves_to_go, "SOMETHING IS SMELLY"
 
 class world:
 
@@ -412,13 +412,13 @@ def run(me = agent, epochs = int, nr_actions = int, start_beliefs = np.ndarray, 
             u = me.pick_action()
             me.act(u)
 
-            print("This is the action taken: " + str(u))
-            print("This is the state after moving: " + str(me.s))
+            #print("This is the action taken: " + str(u))
+            #print("This is the state after moving: " + str(me.s))
 
-            print(f"The risk of the action is: {me.compute_risk_obs()}")
-            print(f"The novelty of the action is: {me.compute_novelty()}")
+            #print(f"The risk of the action is: {me.compute_risk_obs()}")
+            #print(f"The novelty of the action is: {me.compute_novelty()}")
 
-            #states.append(me.s)
+            states.append(me.s)
 
             w.change_true_s(u)
 
@@ -429,7 +429,7 @@ def run(me = agent, epochs = int, nr_actions = int, start_beliefs = np.ndarray, 
             positions.append(pos_conv(w.true_s))
             acts.append(u)
             observations.append(o)
-            print("This is the state after observing: " + str(me.s))
+            #print("This is the state after observing: " + str(me.s))
         
 
         epoch_positions.append(positions)
@@ -444,9 +444,13 @@ def run(me = agent, epochs = int, nr_actions = int, start_beliefs = np.ndarray, 
             #print(f"This is the updated A {me.A}")"""
 
                    
-        #me.A = EM(epoch_obs, epoch_acts, me.B, me.A, 1000).copy()
+        me.A = EM(epoch_obs, epoch_acts, me.B.copy(), me.A.copy(), start_beliefs, states[-1], 100).copy()
 
         A_matrices.append(me.A.reshape(me.A.shape[0], -1).copy())
+
+        
+        if e == epochs-10:
+            me.dec_temp = 0.1
 
     return epoch_positions, A_matrices
 

@@ -27,11 +27,11 @@ start_s[:,:,0,0] = [[0.25,0.25],[0.25,0.25]]
 
 full_start_s = np.repeat(start_s[np.newaxis,:,:,:,:],repeats = 2, axis =0)
 
-agent0_A, agent1_A = true_A(base = 0.1, pretrain_strength =10) #TRUE A
+#agent0_A, agent1_A = true_A(base = 0.1, pretrain_strength =10) #TRUE A
 
 # use smaller Dirichlet prior so updates change probabilities faster
-#agent0_A = 0.1 * np.ones((11,2,2,4,4))
-#agent1_A = 0.1 * np.ones((11,2,2,4,4))
+agent0_A = 0.1 * np.ones((11,2,2,4,4))
+agent1_A = 0.1 * np.ones((11,2,2,4,4))
 
 
 
@@ -74,8 +74,8 @@ test1_goals[:,1,:,2] = 1e-10
 #test_goals1 = test_goals1/np.sum(test_goals1)
 
 
-agent0_fullgoals = np.stack((agent0_goals, test1_goals), axis = 0)
-agent1_fullgoals = np.stack((agent1_goals, test0_goals), axis = 0)
+agent0_fullgoals = np.stack((agent0_goals, agent1_goals), axis = 0)
+agent1_fullgoals = np.stack((agent1_goals, agent0_goals), axis = 0)
 
 
 
@@ -117,12 +117,12 @@ terms1 = ["risk", "nov"]
 nr_moves = 3
 
 
-cheeses = [[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1]]#,[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1]]
+cheeses = [[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1]]
 #cheeses = [[0,0],[1,0],[0,1],[1,1]]
 epochs = len(cheeses)
 
 
-exploration = False
+exploration = True
 
 
 agent0 = agent(agent0_full_A.copy(), start_B.copy(), copy.deepcopy(full_start_s), U = U.copy(), goal_states = copy.deepcopy(agent0_fullgoals), goal_obs = agent0_fullgoals_obs.copy(),
