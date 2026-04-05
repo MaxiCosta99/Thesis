@@ -1,4 +1,5 @@
 import numpy as np
+import scipy.special as sp
 
 #np.set_printoptions(precision = 2)
 
@@ -136,6 +137,79 @@ def EM(obs_eps, acts_eps, tm_unres, gm, start, end, num_steps):
     return reshaped_gm
 
 
+ 
+ 
+
+
+def dir_VI(logl, data, num_iters, num_samples, prior, step_size):
+ 
+    dim_params = prior.shape[0]
+
+    var = np.random.uniform(0,1,dim_params)
+    var = var/np.sum(var)
+
+    sump = np.sum(prior)
+
+    for _ in range(num_iters):
+
+        sumv = np.sum(var)
+
+        kl_grad = - sp.polygamma(1, sumv)*(sumv-sump) + (var-prior)*sp.polygamma(1, var)
+
+        """samples = np.zeros((num_samples, dim_params))
+
+        for i in range(num_samples):
+            sample = np.random.dirichlet(var)
+            score = -sp.polygamma(0, var) + sp.polygamma(0, sumv) + np.log(sample)
+            samples[i] = logl(data, sample) * score
+
+        exp_grad = np.sum(samples, axis = 0)/num_samples"""
+        ############# CHATGPT FIX
+        logls = np.zeros(num_samples)
+        scores = np.zeros((num_samples, dim_params))
+
+        for i in range(num_samples):
+            sample = np.random.dirichlet(var)
+            logls[i] = logl(data, sample)
+            scores[i] = -sp.polygamma(0, var) + sp.polygamma(0, sumv) + np.log(sample)
+
+        baseline = np.mean(logls)
+
+        exp_grad = np.mean((logls - baseline)[:, None] * scores, axis=0)
+        #CHATGPT FIXXXX END
+
+        grad = exp_grad - kl_grad
+        var = var + grad*step_size
+
+        var = np.clip(var, 0, None)
+    
+    return var
+
+
+
+num_states = 10
+prior = np.ones(num_states)
+
+def logl(x, theta):
+
+    value = np.sum(np.log(theta[x]))
+
+    return value
+
+x = np.array([0,1,0,1,0,1,1,0])
+num_iters = 400
+num_samples = 400
+step_size = 0.0005
+
+post = dir_VI(logl, x, num_iters, num_samples, prior, step_size)
+
+
+print(post)
+
+1/0
+
+
+
 if __name__ == "__a test__":
 
     x = np.array([[1,1,1,1,0,0,0.5,0.3],
@@ -164,7 +238,7 @@ if __name__ == "__a test__":
 
 
 
-if __name__ == "__main__":
+if __name__ == "__lol__":
 
     tm = np.array(([[[0,0,0,0],
                         [1,1,0,0],
