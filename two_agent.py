@@ -59,6 +59,12 @@ class agent:
     self.mc_samples = mc_samples
 
   
+  
+  def restart_agent(self, start_s, reason_depth, nr_moves):
+      self.s = start_s
+      self.reason_depth = reason_depth
+      self.moves_to_go = nr_moves
+
   def sample(self, dcm):
       """
       dcm is dirichlet counts matrix
@@ -568,7 +574,7 @@ class agent:
         pu[u] = self.compute_EFE(u, who)
 
 
-      pu = softmax(pu)
+      pu = softmax(pu,1)
 
       #print(f"These are the probabilities of the actions: {pu}")
 
@@ -605,22 +611,26 @@ class agent:
 
   def sop_imagine_u(self, who = int):
 
-    u, pu = self.SFE(who)
-    print("THIS IS SHIT DON'T USE YET")
-    1/0
+    u, H = self.SFE(who)
+
+    pu = softmax(H, 1)
 
     if self.little_u_imaginer == True:
 
         if self.branch_reductor == "cut":
-            #u_imagined = np.random.choice(len(self.U), size = self.u_imagination_breadth, replace = False, p = pu) to use if sampling
+            
             u_imagined = u[pu>self.u_prob_threshold]
             pu_imagined = pu[pu>self.u_prob_threshold]
             pu_imagined = pu_imagined/np.sum(pu_imagined)
             #print(f"the EFEs of these actions are: {pu}")
 
         elif self.branch_reductor == "sample":
+            assert 1/0, "Sampling not implemented for two agent SFE, since for one agent it's already ass"
             u_imagined = np.random.choice(u, size = 1, p = pu)
             pu_imagined = [1]
+
+        else:
+            assert 1/0, "WHAT THE SHID IS THIS? THERE IS NO SUCH BRANCH REDUCTOR"
 
     else:
       u_imagined = u
@@ -860,9 +870,9 @@ class agent:
 
     o_imagined, po_imagined = self.imagine_o(0) #0 is I imagine
 
-    """
-    if current_depth == 2:
-      print(f"The obsevations considered by agent {self.agent_id} at depth {current_depth} are: {o_imagined} with probability: {po_imagined}")
+    
+    """if current_depth == 2:
+      print(f"The observations considered by agent {self.agent_id} at depth {current_depth} are: {o_imagined} with probability: {po_imagined}")
     """
 
     Hro = np.zeros(len(o_imagined))
@@ -874,31 +884,15 @@ class agent:
       self.observe(o,0)
       self.observe(o,1)
 
-      """
-      if current_depth == 2:
-          print(f"This is the observation considered by me {o} at depth {current_depth}")"""
-      #print(f"This is the depth before he acting {current_depth}")
-      up_imagined, pup_imagined = self.sop_imagine_u(1) #he does the SFE CAN BE EXTENDED USING SAMPLE
+      up_imagined, pup_imagined = self.sop_imagine_u(1)
 
-      #### FOR DEBUGGGINIG
-
-      #up_imagined = np.array(self.U)
-      #pup_imagined = np.ones(len(self.U))/len(self.U)
-      #up_imagined, pup_imagined = self.imagine_u(1)
-
-      """if current_depth ==2:
-          print(f"At depth {current_depth} agent {self.agent_id} imagined that in the subsequent action the other agent would perform action:\n {up_imagined} with probability: \n {pup_imagined}")
-      """
-      #print(f"This is the depth after he acting {current_depth}")
-      ################
+      #print(f"These are the actions imagine for the other agent at depth {current_depth}: {up_imagined} with probability {pup_imagined}")
 
       Hup = np.zeros(len(up_imagined))
 
       cp2 = self.s.copy()
-
       for j,up in enumerate(up_imagined):
 
-        #print(f"This is the action considered by him {up} at depth {current_depth}")
         self.act_other(up) #this act both changes my beliefs and his beliefs
 
         op_imagined, pop_imagined = self.imagine_o(1)
@@ -906,7 +900,6 @@ class agent:
 
         cp3 = self.s.copy()
         for k,op in enumerate(op_imagined):
-          #print(f"This is the observation considered by him {op} at depth {current_depth}")
           self.observe(op,1)
           self.observe(op,0)
 
@@ -919,7 +912,6 @@ class agent:
 
 
             if current_depth < self.reason_depth:
-              #print(f"This is the action considered {u} at depth {current_depth}")
               cp4 = self.s.copy() #he doesnt know what I do UP TO DEBATE
               self.act(u)
 
@@ -928,7 +920,7 @@ class agent:
               self.s = cp4.copy()
 
 
-          Hrop[k] = np.dot(softmax(Hropu), Hropu)
+          Hrop[k] = np.dot(softmax(Hropu, 1), Hropu)
           self.s = cp3.copy()
 
         Hup[j] = np.dot(pop_imagined, Hrop)
@@ -953,25 +945,23 @@ class agent:
 
   def pick_action(self):
 
-    u_imagined, H = self.SFE(0)
+      u_imagined, H = self.SFE(0)
+      uprobs = softmax(H, self.dec_temp)
+      action = np.random.choice(u_imagined, p = uprobs)
 
-    uprobs = softmax(H, self.dec_temp)
+    
 
-    assert len(u_imagined) > 0, "No action imagined"
+      self.moves_to_go = self.moves_to_go - 1
+      self.change_reason_depth()
 
-    #print(f"This is the current belief state of agent {self.agent_id}: {np.einsum("ijkl -> jl", self.s[0].copy())}")
+      #print(f"This is the current belief state of agent {self.agent_id}: {np.einsum("ijkl -> jl", self.s[0].copy())}")
+      #print(f"These are the actions considered by agent {self.agent_id} with their probability {u_imagined}, {np.round(uprobs,2)}")
+      print(f"These are the actions considered by agent {self.agent_id} with their SFE {u_imagined}, {np.round(H,2)}")
+      print(f"This is the real action taken by agent {self.agent_id}: {action}")
 
-    #print(f"These are the actions considered by agent {self.agent_id} with their probability {u_imagined}, {np.round(uprobs,2)}")
+      assert len(u_imagined) > 0, "No action imagined"
 
-    action = np.random.choice(u_imagined, p = uprobs)
-
-    print(f"This is the real action taken by agent {self.agent_id}: {action}")
-
-    self.moves_to_go = self.moves_to_go - 1
-
-    self.change_reason_depth()
-
-    return action
+      return action
   
   def explore(self):
     old_terms = self.terms.copy()
@@ -1140,7 +1130,8 @@ def true_A(base, pretrain_strength = float):
 
     return agent0_A, agent1_A
 
-def run(agent0, agent1, epochs = int, nr_actions = int, start_beliefs = np.array, cheeses = list, exploration_phase = bool):
+def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_beliefs = np.array, cheeses = list,
+        exploration_phase = bool, bayes_infer = bool, A_learning = bool):
 
 
 
@@ -1166,10 +1157,10 @@ def run(agent0, agent1, epochs = int, nr_actions = int, start_beliefs = np.array
 
     epochs_agent_worlds.append((agent0.agent_id, agent1.agent_id))
     
+  
+    agent0.restart_agent(start_beliefs, reason_depth, nr_moves)
+    agent1.restart_agent(start_beliefs, reason_depth, nr_moves)
 
-
-    agent0.restart_beliefs(start_beliefs)
-    agent1.restart_beliefs(start_beliefs)
     w = world(cheeses[e])
 
 
@@ -1184,34 +1175,26 @@ def run(agent0, agent1, epochs = int, nr_actions = int, start_beliefs = np.array
 
 
 
-    agent0.reason_depth = nr_actions
-    agent1.reason_depth = nr_actions
-    agent0.moves_to_go = nr_actions
-    agent1.moves_to_go = nr_actions
-
-
 
     beliefs.append((agent0.s.copy(),agent1.s.copy()))
 
-    #print(f"This is the starting beliefs of agent 0: {agent0.s}")
-    for _ in range(nr_actions):
+    for _ in range(nr_moves):
 
       if agent0.agent_id == 0: #if agent0 in env 1 he explores, if agent1 in env 0 he explores
   
         u = agent0.pick_action()
         agent0.act(u)
         agent1.act_other(u)
-        #print("This is the action taken by agent 0: " + str(u))
+        
 
         w.change_true_s(agent0, u)
         o = w.give_o(agent0)
-        #print(f"This is the observation given by the world: {o}")
+        
         positions.append(pos_conv(w.true_s))
         agentselfposA.append(agent0.s.copy())
         observationsA.append(o)
 
-        bayesian = False
-        if bayesian is True:
+        if bayes_infer is True:
             agent0.bayesian_observe(o,0)
             agent0.bayesian_observe(o,1)
             agent1.bayesian_observe(o,0)
@@ -1247,7 +1230,7 @@ def run(agent0, agent1, epochs = int, nr_actions = int, start_beliefs = np.array
         agentselfposB.append(agent1.s.copy())
         observationsB.append(o)
         
-        if bayesian is True:
+        if bayes_infer is True:
             agent0.bayesian_observe(o,0)
             agent0.bayesian_observe(o,1)
             agent1.bayesian_observe(o,0)
@@ -1313,23 +1296,19 @@ def run(agent0, agent1, epochs = int, nr_actions = int, start_beliefs = np.array
         agent1.observe(o,1)
 
 
-    """
-    for (o,s) in zip(observationsA, agentselfposA):
-        if agent0.agent_id == 0:
-          agent0.update_A(o,s,who=0)
-        else:
-          agent0.update_A(o,s,who=1)
+    if A_learning == True:
+        for (o,s) in zip(observationsA, agentselfposA):
+            if agent0.agent_id == 0:
+              agent0.update_A(o,s,who=0)
+            else:
+              agent0.update_A(o,s,who=1)
 
-    for (o,s) in zip(observationsB, agentselfposB):
-        if agent1.agent_id == 1:
-          agent1.update_A(o,s,who=0)
-        else:
-          agent1.update_A(o,s,who=1)"""
+        for (o,s) in zip(observationsB, agentselfposB):
+            if agent1.agent_id == 1:
+              agent1.update_A(o,s,who=0)
+            else:
+              agent1.update_A(o,s,who=1)
 
-    
-    """if agent0.agent_id == 0: #update only when not exploring DO NOT USE THIS UPDATER
-        agent0.update_desires_other()
-        agent1.update_desires_other()"""
     
     
     

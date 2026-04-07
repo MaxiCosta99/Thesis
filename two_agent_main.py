@@ -27,7 +27,7 @@ start_s[:,:,0,0] = [[0.25,0.25],[0.25,0.25]]
 
 full_start_s = np.repeat(start_s[np.newaxis,:,:,:,:],repeats = 2, axis =0)
 
-agent0_A, agent1_A = true_A(base = 0.1, pretrain_strength =1000) #TRUE A
+agent0_A, agent1_A = true_A(base = 0.1, pretrain_strength =10) #TRUE A
 
 # use smaller Dirichlet prior so updates change probabilities faster
 #agent0_A = 0.1 * np.ones((11,2,2,4,4))
@@ -47,17 +47,17 @@ pp = np.exp(-punishment)
 
 
 agent0_goals = np.ones(start_s.shape)
-agent0_goals[0,:,2,:] = rp
-agent0_goals[1,:,3,:] = rp
-agent0_goals[0,:,3,:] = pp
-agent0_goals[1,:,2,:] = pp
+agent0_goals[0,:,2,:] = 1e2
+agent0_goals[1,:,3,:] = 1e2
+agent0_goals[0,:,3,:] = 1e-10
+agent0_goals[1,:,2,:] = 1e-10
 agent0_goals_cat = agent0_goals/np.sum(agent0_goals)
 
 agent1_goals = np.ones(start_s.shape)
-agent1_goals[:,0,:,2] = rp
-agent1_goals[:,1,:,3] = rp
-agent1_goals[:,0,:,3] = pp
-agent1_goals[:,1,:,2] = pp
+agent1_goals[:,0,:,2] = 1e2
+agent1_goals[:,1,:,3] = 1e2
+agent1_goals[:,0,:,3] = 1e-10
+agent1_goals[:,1,:,2] = 1e-10
 agent1_goals_cat = agent1_goals/np.sum(agent1_goals)
 
 #uncertain_goals = np.ones((2,2,4,4))
@@ -101,8 +101,8 @@ agent1_fullgoals_obs = np.stack((agent1_goal_obs, agent0_goal_obs), axis = 0)
 
 
 U = [0,1,2,3]
-reason_depth = 10
-dec_temp = 0.1
+reason_depth = 3
+dec_temp = 0.01
 little_o_imaginer = True
 o_imagination_breadth = 3
 o_prob_threshold = 0.1
@@ -111,7 +111,7 @@ little_u_imaginer = True
 u_imagination_breadth = 3
 u_prob_threshold = 0.1
 
-social0 = False
+social0 = True
 social1 = False
 
 terms0 = ["risk"]
@@ -120,7 +120,7 @@ terms1 = ["risk"]
 sampling0 = "mean"
 sampling1 = "mean"
 
-branch_reductor0 = "sample"
+branch_reductor0 = "cut"
 branch_reductor1 = "cut"
 
 mc_samples0 = 1000
@@ -130,6 +130,8 @@ mc_samples1 = 100
 nr_moves = 3
 
 
+
+
 #cheeses = [[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1]]
 #cheeses = [[0,0],[1,0],[0,1],[1,1]]
 cheeses = [[0,0]]
@@ -137,6 +139,8 @@ epochs = len(cheeses)
 
 
 exploration = False
+bayes_infer = False
+A_learning = False
 
 
 agent0 = agent(agent0_full_A.copy(), start_B.copy(), copy.deepcopy(full_start_s), U = U.copy(), goal_states = copy.deepcopy(agent0_fullgoals), goal_obs = agent0_fullgoals_obs.copy(),
@@ -154,7 +158,11 @@ agent1 = agent(agent1_full_A.copy(), start_B.copy(), copy.deepcopy(full_start_s)
             branch_reductor = branch_reductor1, mc_samples = mc_samples1)
 
 
-epochs_positions, epochs_A_matrices, epochs_agent_worlds, epochs_beliefs, epochs_desires = run(agent0 = agent0, agent1 = agent1, epochs = epochs, nr_actions = nr_moves, start_beliefs = copy.deepcopy(full_start_s), cheeses = cheeses, exploration_phase = exploration)
+
+
+
+epochs_positions, epochs_A_matrices, epochs_agent_worlds, epochs_beliefs, epochs_desires = run(agent0 = agent0, agent1 = agent1, epochs = epochs, nr_moves = nr_moves, reason_depth = reason_depth, start_beliefs = copy.deepcopy(full_start_s), cheeses = cheeses,
+                                                                                                exploration_phase = exploration, bayes_infer = bayes_infer, A_learning = A_learning)
 
 #print(epochs_beliefs[0][0][0])
 
