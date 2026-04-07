@@ -1,5 +1,5 @@
 import numpy as np
-from utils import EM
+from utils import EM, dir_VI
 
 def softmax(x, beta = 1):
   return np.exp(-x/beta)/np.sum(np.exp(-x/beta))
@@ -31,7 +31,8 @@ class agent:
                goal_states, goal_obs, reason_depth = int, dec_temp = float, chatty_boy = bool,
                little_o_imaginer = bool, o_imagination_breadth = int, o_prob_threshold = float,
                little_u_imaginer = bool, u_imagination_breadth = int, u_prob_threshold = float,
-               agent_id = int, moves_to_go = int, social = bool, terms = list):
+               agent_id = int, moves_to_go = int, social = bool, terms = list, sampling = str,
+               branch_reductor = str, mc_samples = int):
     self.A = A #[my/your]
     self.s = s #[my/your belief, agent0cheese, agent1cheese, agent0pos, agetn1pos]
     self.B = B
@@ -53,6 +54,9 @@ class agent:
     self.moves_to_go = moves_to_go
     self.social = social
     self.terms = terms
+    self.sampling = sampling
+    self.branch_reductor = branch_reductor
+    self.mc_samples = mc_samples
 
   
   def sample(self, dcm):
@@ -62,7 +66,11 @@ class agent:
       dcm_shape = dcm.shape
       dcm_flat = dcm.reshape(-1)
       
-      sample = dcm_flat/np.sum(dcm_flat)
+      if self.sampling == "mean":
+          sample = dcm_flat/np.sum(dcm_flat)
+
+      elif self.sampling == "sample":
+          sample = np.random.dirichlet(dcm_flat)
       
       out = sample.reshape(dcm_shape)
       return out
@@ -88,9 +96,50 @@ class agent:
 
     self.s = backup
 
-  def update_desires_other(self):
-      self.goal_states[1] = self.goal_states[1].copy()+self.s[1].copy()
-      #self.goal_states[1] = self.goal_states[1]/np.sum(self.goal_states[1])
+  def change_goals(self, new_goal_states, who):
+      new_gs_res = new_goal_states.reshape(self.goal_states[who].shape)
+      self.goal_states[who] = new_gs_res.copy()
+
+
+  def logl_action(self, a, sampled_goal):
+
+      gucp = self.goal_states.copy()
+
+      self.change_goals(new_goal_states = sampled_goal, who = 1)
+
+      actions, action_probs = self.SFE(1)
+
+      self.goal_states = gucp.copy()
+
+      if a in actions:
+          idx = np.where(actions == a)[0][0]
+          action_prob = action_probs[idx]
+
+      else:
+          action_prob = 0
+    
+      return np.log(action_prob + 1e-10)
+
+
+  def update_goals_other(self, a):
+      """#old version, not bayesian
+      #self.goal_states[1] = self.goal_states[1].copy()+self.s[1].copy()
+      #self.goal_states[1] = self.goal_states[1]/np.sum(self.goal_states[1])"""
+
+      num_iters = 10
+      num_samples = 10
+      prior = self.goal_states[1].reshape(-1).copy()
+      step_size = 0.01
+      natgrad = True
+
+  
+
+      new_desires = dir_VI(self.logl_action, a, num_iters, num_samples, prior, step_size, natgrad)
+
+      new_desires_reshaped = new_desires.reshape(self.goal_states[1].shape)
+
+      self.goal_states[1] = new_desires_reshaped.copy()
+
 
 
   def bayesian_observe(self,o,who):
@@ -408,7 +457,12 @@ class agent:
 
   def compute_risk(self,who):
     whose_s = self.s[who].copy()
-    whose_goals = self.sample(self.goal_states[who].copy())
+
+    if who == 1:
+        whose_goals = self.sample(self.goal_states[who].copy())
+
+    else:
+        whose_goals = self.goal_states[who].copy()
 
 
     #print(f"These is {self.agent_id}'s perspective of {who} goal : {whose_goals}")
@@ -423,12 +477,15 @@ class agent:
     temp = np.divide(s_flat, goals_flat)
     temp1 = np.where(temp != 0, np.log(temp), 0)
 
-
-
+    #print(f"These are the states: {whose_s}")
+    #print(f"These are the goals: {whose_goals}")
+    
 
     #temp1 = np.log(temp, where=(temp != 0), out=np.zeros_like(temp))
 
     risk = np.dot(s_flat, temp1)
+
+    #print(f"This is the risk: {risk}")
     return risk
 
   def compute_novelty(self,who):
@@ -505,6 +562,7 @@ class agent:
   def imagine_u(self, who = int):
     if self.little_u_imaginer == True:
 
+
       pu = np.zeros(len(self.U))
       for u in self.U:
         pu[u] = self.compute_EFE(u, who)
@@ -512,16 +570,23 @@ class agent:
 
       pu = softmax(pu)
 
+      #print(f"These are the probabilities of the actions: {pu}")
+
       #print(f"Agent {self.agent_id} gives the following probs for each action: {pu}")
 
+      if self.branch_reductor == "cut":
+          u_imagined = np.array(self.U)[pu>self.u_prob_threshold]
+          pu_imagined = pu[pu>self.u_prob_threshold]
+          pu_imagined = pu_imagined/np.sum(pu_imagined)
 
-      #u_imagined = np.random.choice(len(self.U), size = self.u_imagination_breadth, replace = False, p = pu) to use if sampling
-      u_imagined = np.array(self.U)[pu>self.u_prob_threshold]
+          
+      
+      elif self.branch_reductor == "sample":
+          u_imagined = np.random.choice(len(self.U), size = 1, p = pu)
+          pu_imagined = [1]
 
-
-
-      pu_imagined = pu[pu>self.u_prob_threshold]
-      pu_imagined = pu_imagined/np.sum(pu_imagined)
+      #print(f"this the sampled action: {u_imagined}")
+      
 
       #print(f"the EFEs of these actions are: {pu}")
 
@@ -531,11 +596,9 @@ class agent:
 
     #print(f"the actions imagined are: {u_imagined}")
 
-    assert len(u_imagined) >0, "No action was imagined"
-
-    assert abs(np.sum(pu_imagined)-1)<0.01,f"Actions probabilities sum to {np.sum(pu_imagined)}"
-
     
+    assert len(u_imagined) >0, "No action was imagined"
+    assert abs(np.sum(pu_imagined)-1)<0.01,f"Actions probabilities sum to {np.sum(pu_imagined)}"
 
     return u_imagined, pu_imagined
 
@@ -543,14 +606,21 @@ class agent:
   def sop_imagine_u(self, who = int):
 
     u, pu = self.SFE(who)
+    print("THIS IS SHIT DON'T USE YET")
+    1/0
 
     if self.little_u_imaginer == True:
 
-      #u_imagined = np.random.choice(len(self.U), size = self.u_imagination_breadth, replace = False, p = pu) to use if sampling
-      u_imagined = u[pu>self.u_prob_threshold]
-      pu_imagined = pu[pu>self.u_prob_threshold]
-      pu_imagined = pu_imagined/np.sum(pu_imagined)
-      #print(f"the EFEs of these actions are: {pu}")
+        if self.branch_reductor == "cut":
+            #u_imagined = np.random.choice(len(self.U), size = self.u_imagination_breadth, replace = False, p = pu) to use if sampling
+            u_imagined = u[pu>self.u_prob_threshold]
+            pu_imagined = pu[pu>self.u_prob_threshold]
+            pu_imagined = pu_imagined/np.sum(pu_imagined)
+            #print(f"the EFEs of these actions are: {pu}")
+
+        elif self.branch_reductor == "sample":
+            u_imagined = np.random.choice(u, size = 1, p = pu)
+            pu_imagined = [1]
 
     else:
       u_imagined = u
@@ -573,20 +643,32 @@ class agent:
 
     if self.little_o_imaginer == True:
 
-      o_imagined = np.arange(self.A[who].shape[0])[po > self.o_prob_threshold]
-      #o_imagined = np.random.choice(self.A.shape[0], size = self.o_imagination_breadth, replace = True, p = po) to use if sampling
-      #print(o_imagined)
+        if self.branch_reductor == "cut":
 
-      po_imagined = po[o_imagined]/np.sum(po[o_imagined])
+            o_imagined = np.arange(self.A[who].shape[0])[po > self.o_prob_threshold]
+            #o_imagined = np.random.choice(self.A.shape[0], size = self.o_imagination_breadth, replace = True, p = po) to use if sampling
+            #print(o_imagined)
+
+            po_imagined = po[o_imagined]/np.sum(po[o_imagined])
+
+            if len(o_imagined)==0:
+                #print(f"Agent {self.agent_id} didn't imagine any observation because all of them are below the threshold")
+                o_imagined = [np.random.uniform(0,self.A[who].shape[0])]
+                po_imagined = [1]
+
+            
+        elif self.branch_reductor == "sample":
+            o_imagined = np.random.choice(self.A[who].shape[0], size = 1, p = po)
+            po_imagined = [1]
+
+
+        
 
     else:
       o_imagined = np.arange(self.A[who].shape[0])
       po_imagined = po
 
-    if len(o_imagined)==0:
-      #print(f"Agent {self.agent_id} didn't imagine any observation because all of them are below the threshold")
-      o_imagined = [np.random.uniform(0,self.A[who].shape[0])]
-      po_imagined = [1]
+    
 
     assert abs(np.sum(self.s[who])-1)<0.01, f"States probs sum to {np.sum(self.s[who])}"
     assert abs(np.sum(po)-1)<0.01, f"Observation probs sum to {np.sum(po)}"
@@ -596,45 +678,108 @@ class agent:
 
   def SFE(self, who = int):
 
-    current_depth = 1
+    #print(f"Agent {self.agent_id} has reasoning depth {self.reason_depth}")
 
-    u_imagined, _ = self.imagine_u(who)
+    if self.branch_reductor == "cut":
+        num_samples = 1
 
-    #print(f"The actions considered by agent{self.agent_id} at depth {current_depth} are: {u_imagined} with probability {u_probs_temp}")
+    elif self.branch_reductor == "sample":
+        num_samples = self.mc_samples
 
-    H = np.zeros(len(u_imagined))
+    else:
+        assert 1/0, "WHAT THE SHID IS THIS? THERE IS NO SUCH BRANCH REDUCTOR"
 
-    cp = self.s.copy()
-    for i,u in enumerate(u_imagined):
-
-
-      H[i]=self.compute_EFE(u,who)
+    us = []
+    sfes = []
 
 
-      if current_depth < self.reason_depth:
+    for i in range(num_samples):
 
-        if self.social == True:
 
-          if who == 0:
-            #print(f"This is the action considered {u} at depth {current_depth}")
-            self.act(u)
-            future_EFE = self.SFEr2(current_depth + 1)
-          else:
-            self.act_other(u)
-            future_EFE = self.SFEr(current_depth + 1,who = 1)
+        current_depth = 1
 
-        else:
-          self.act(u)
-          future_EFE = self.SFEr(current_depth + 1, who = 0)
+        u_imagined, _ = self.imagine_u(who)
 
-        H[i] = future_EFE #+ H[i]
+        #print(f"This is the action sampled at depth {current_depth}: {u_imagined}")
 
-        self.s = cp.copy()
+
+        #print(f"The actions considered by agent{self.agent_id} at depth {current_depth} are: {u_imagined} with probability {u_probs_temp}")
+
+        H = np.zeros(len(u_imagined))
+
+        cp = self.s.copy()
+        for i,u in enumerate(u_imagined):
+
+
+          H[i]=self.compute_EFE(u,who)
+
+          #print(f"THIS IS THE ACTION BEING CONSIDERED AT DETPH {current_depth}: {u} with starting EFE {np.round(H[i],2)}")
+
+
+
+          if current_depth < self.reason_depth:
+
+            if self.social == True:
+
+              if who == 0:
+                #print(f"This is the action considered {u} at depth {current_depth}")
+                self.act(u)
+                future_EFE = self.SFEr2(current_depth + 1)
+              else:
+                self.act_other(u)
+                future_EFE = self.SFEr(current_depth + 1,who = 1)
+
+            else:
+              self.act(u)
+              future_EFE = self.SFEr(current_depth + 1, who = 0)
+
+            H[i] = future_EFE #+ H[i]*np.exp(current_depth)
+
+            self.s = cp.copy()
+        
+          #print(f"THIS IS THE ACTION BEING CONSIDERED AT DETPH {current_depth}: {u} with EFE {np.round(H[i],2)}")
     
-      #print(f"THIS IS THE ACTION BEING CONSIDERED AT DETPH {current_depth}: {u} with EFE {H[i]}")
+        us.append(u_imagined)
+        sfes.append(H)
 
 
-    return u_imagined, softmax(np.array(H), self.dec_temp) #1 is the decision temperature
+
+    if self.branch_reductor == "cut":
+        u_imagined = us[0]
+        H = sfes[0]
+
+    elif self.branch_reductor == "sample":
+
+        for i in range(len(us)):
+            us[i] = int(us[i][0])
+            sfes[i] = float(sfes[i][0])
+
+        #print(f"These are the sampes actions: {us}")
+        #print(f"These are the corresponding SFES: {sfes}")
+
+        us = np.array(us)
+        sfes = np.array(sfes)
+
+        u_imagined = []
+        H = []
+
+
+        for u in range(len(self.U)):
+            temp = sfes[us==u]
+            #print(f"This is the extracted data: {temp}")
+            if len(temp) > 0:
+                sfes_mean = np.mean(temp)
+                #sfes_mean = np.min(temp)
+
+
+                u_imagined.append(u)
+                H.append(sfes_mean)
+
+
+    #print(f"u_imagined: {u_imagined}, H: {H}")
+        
+
+    return u_imagined, np.array(H) #1 is the decision temperature
 
 
   def SFEr(self, current_depth = int, who = int):
@@ -654,6 +799,8 @@ class agent:
       self.observe(o,who)
 
       u_imagined, _ = self.imagine_u(who)
+
+      #print(f"This is the action sampled at depth {current_depth}: {u_imagined}")
       Hrou = np.zeros(len(u_imagined))
 
       #print(f"The actions considered by agent{self.agent_id} at depth {current_depth} are: {u_imagined} with probability {u_probs_temp_2}")
@@ -664,7 +811,9 @@ class agent:
 
         
         Hrou[j] = self.compute_EFE(u,who)
-        
+
+        #print(f"THIS IS THE ACTION BEING CONSIDERED AT DETPH {current_depth}: {u} with starting EFE {np.round(Hrou[j],2)}")
+
         if current_depth < self.reason_depth:
 
           if who == 0:
@@ -675,14 +824,23 @@ class agent:
             self.act_other(u)
             future_EFE = self.SFEr(current_depth + 1, who = who)
 
-          Hrou[j] = future_EFE #+Hrou[j] 
+          Hrou[j] = future_EFE #+ Hrou[j]*np.exp(current_depth)
           self.s = cp2.copy()
 
         #print(f"THIS IS THE ACTION BEING CONSIDERED AT DEPTH {current_depth}, {u}, WITH CUM_EFE {Hrou[j]}")
 
 
-      pur = softmax(Hrou) #makes more sense to have 1 decision temperature since this is counterfactual reasoning
+      if self.branch_reductor == "cut":
+          pur = softmax(Hrou, 1) #makes more sense to have 1 decision temperature since this is counterfactual reasoning
 
+      elif self.branch_reductor == "sample":
+          assert len(Hrou) == 1
+          assert len(u_imagined) == 1
+          Hrou = Hrou[0]
+          pur = 1
+
+      else:
+          assert 1/0, "WHAT THE SHID IS THIS? THERE IS NO SUCH BRANCH REDUCTOR"
 
       Hro[i] = np.dot(pur, Hrou)
       self.s = cp1.copy()
@@ -766,7 +924,7 @@ class agent:
               self.act(u)
 
               future_EFE = self.SFEr2(current_depth + 1)
-              Hropu[l] = future_EFE #+ Hropu[l]
+              Hropu[l] = future_EFE# + Hropu[l]
               self.s = cp4.copy()
 
 
@@ -795,13 +953,15 @@ class agent:
 
   def pick_action(self):
 
-    u_imagined, uprobs = self.SFE(0)
+    u_imagined, H = self.SFE(0)
+
+    uprobs = softmax(H, self.dec_temp)
 
     assert len(u_imagined) > 0, "No action imagined"
 
     #print(f"This is the current belief state of agent {self.agent_id}: {np.einsum("ijkl -> jl", self.s[0].copy())}")
 
-    print(f"These are the actions considered by agent {self.agent_id} with their probability {u_imagined}, {uprobs}")
+    #print(f"These are the actions considered by agent {self.agent_id} with their probability {u_imagined}, {np.round(uprobs,2)}")
 
     action = np.random.choice(u_imagined, p = uprobs)
 
@@ -984,8 +1144,6 @@ def run(agent0, agent1, epochs = int, nr_actions = int, start_beliefs = np.array
 
 
 
-  
-
   epochs_agent_worlds = [] #save in which world each agent is
   epochs_positions = [] #true positions of each agent
   epochs_A_matrices = [] #A matrices of each agent (my, his)
@@ -993,7 +1151,7 @@ def run(agent0, agent1, epochs = int, nr_actions = int, start_beliefs = np.array
   epochs_desires = []
 
   epochs_A_matrices.append((agent0.A.copy(), agent1.A.copy()))
-  epochs_desires.append((agent0.goal_states.copy(),agent1.goal_states.copy()))
+  epochs_desires.append((agent0.goal_states.copy(),agent1.goal_states.copy())) #THIS NOT IN USE
 
 
   for e in range(epochs):
@@ -1066,6 +1224,7 @@ def run(agent0, agent1, epochs = int, nr_actions = int, start_beliefs = np.array
               
         beliefs.append((agent0.s.copy(),agent1.s.copy()))
 
+
         #print(f"This is the beliefs of agent 0 after observing: {agent0.s}")
         #print(f"This is the beliefs of agent 1 after observing: {agent1.s}")
     
@@ -1073,6 +1232,9 @@ def run(agent0, agent1, epochs = int, nr_actions = int, start_beliefs = np.array
 
         
         u = agent1.pick_action()
+        #u = 1
+
+
         agent1.act(u)
         agent0.act_other(u)
         
@@ -1097,6 +1259,20 @@ def run(agent0, agent1, epochs = int, nr_actions = int, start_beliefs = np.array
             agent1.observe(o,1)
           
         beliefs.append((agent0.s.copy(),agent1.s.copy()))
+
+
+
+
+
+
+        #agent0.update_goals_other(u)
+
+
+
+
+
+
+
         
         #print(f"This is the beliefs of agent 0 after observing: {agent0.s}")
         #print(f"This is the beliefs of agent 1 after observing: {agent1.s}")
@@ -1137,7 +1313,7 @@ def run(agent0, agent1, epochs = int, nr_actions = int, start_beliefs = np.array
         agent1.observe(o,1)
 
 
-    
+    """
     for (o,s) in zip(observationsA, agentselfposA):
         if agent0.agent_id == 0:
           agent0.update_A(o,s,who=0)
@@ -1148,7 +1324,7 @@ def run(agent0, agent1, epochs = int, nr_actions = int, start_beliefs = np.array
         if agent1.agent_id == 1:
           agent1.update_A(o,s,who=0)
         else:
-          agent1.update_A(o,s,who=1)
+          agent1.update_A(o,s,who=1)"""
 
     
     """if agent0.agent_id == 0: #update only when not exploring DO NOT USE THIS UPDATER
