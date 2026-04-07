@@ -141,30 +141,33 @@ def EM(obs_eps, acts_eps, tm_unres, gm, start, end, num_steps):
  
 
 
-def dir_VI(logl, data, num_iters, num_samples, prior, step_size):
+def dir_VI(logl, data, num_iters, num_samples, prior, step_size, natgrad):
  
     dim_params = prior.shape[0]
 
-    var = np.random.uniform(0,1,dim_params)
-    var = var/np.sum(var)
+    var = prior#np.random.uniform(0.5,2,dim_params)
 
     sump = np.sum(prior)
 
+  
     for _ in range(num_iters):
+
+        print("I DID NOT CRASH YET")
 
         sumv = np.sum(var)
 
         kl_grad = - sp.polygamma(1, sumv)*(sumv-sump) + (var-prior)*sp.polygamma(1, var)
 
-        """samples = np.zeros((num_samples, dim_params))
+        samples = np.zeros((num_samples, dim_params))
 
         for i in range(num_samples):
             sample = np.random.dirichlet(var)
             score = -sp.polygamma(0, var) + sp.polygamma(0, sumv) + np.log(sample)
             samples[i] = logl(data, sample) * score
 
-        exp_grad = np.sum(samples, axis = 0)/num_samples"""
-        ############# CHATGPT FIX
+        exp_grad = np.sum(samples, axis = 0)/num_samples
+
+        """ With baseline
         logls = np.zeros(num_samples)
         scores = np.zeros((num_samples, dim_params))
 
@@ -176,38 +179,84 @@ def dir_VI(logl, data, num_iters, num_samples, prior, step_size):
         baseline = np.mean(logls)
 
         exp_grad = np.mean((logls - baseline)[:, None] * scores, axis=0)
-        #CHATGPT FIXXXX END
+        """
 
         grad = exp_grad - kl_grad
-        var = var + grad*step_size
 
-        var = np.clip(var, 0, None)
+        """#old version
+        grad = np.clip(grad, -1, 1)
+        var = var + grad*step_size
+        var = np.clip(var, 0, 10)"""
+
+
+        if natgrad == True: #In case I want to compute the gradients in natural parameter space
+            d = sp.polygamma(1, var)
+            c = sp.polygamma(1, sumv)
+
+            g_over_d = grad / d
+            correction = c / (1.0 + c * np.sum(1.0 / d))
+
+            nat_grad = g_over_d - correction * np.sum(g_over_d)
+            grad = nat_grad
+            
+
+        phi = np.log(var)
+
+        grad_phi = grad * var
+        phi = phi + grad_phi*step_size
+
+        var = np.exp(phi)
+
     
     return var
 
 
 
-num_states = 10
-prior = np.ones(num_states)
-
-def logl(x, theta):
+def logl_cat(x, theta):
 
     value = np.sum(np.log(theta[x]))
 
     return value
 
-x = np.array([0,1,0,1,0,1,1,0])
-num_iters = 400
-num_samples = 400
-step_size = 0.0005
 
-post = dir_VI(logl, x, num_iters, num_samples, prior, step_size)
+def logl_action(a, agent, sampled_goal):
+
+    gucp = agent.goal_states.copy()
+
+    agent.change_goals(new_goal_states = sampled_goal, who = 1)
+
+    actions, action_probs = agent.SFE(1)
+
+    agent.goal_states = gucp.copy()
+
+    if a in actions:
+        idx = np.where(actions == a)[0][0]
+        action_prob = action_probs[idx]
+
+    else:
+        action_prob = 0
+    
+    return np.log(action_prob + 1e-10)
 
 
-print(post)
 
-1/0
 
+
+
+if __name__ == "_main__":
+    num_states = 10
+    prior = np.ones(num_states)*10
+    x = np.array([0,1,2,3,4,4])
+    num_iters = 400
+    num_samples = 300
+    step_size = 0.01
+
+    post = dir_VI(logl, x, num_iters, num_samples, prior, step_size, natgrad = False)
+
+
+    print(np.round(post,2))
+
+    1/0
 
 
 if __name__ == "__a test__":

@@ -36,3 +36,20 @@ Should disentangle GM A, one with 5 obs for env1 and one with 7 obs for env2
 
 obs 7 (and possibly 2,3,8) have problems
     need fixing 
+
+
+sophia:
+    maybe introduce discount of rewards in state probability
+        is it possible?
+
+For now dirichlet sampling is just taking the mean
+    A BIT CHEATING
+
+
+In two agent setting a matrix update is turned off
+
+
+I have implemented the MC version for two agents, for one agent not yet
+
+Now using min instead of mean as MC estimator of SFE
+    works, but risky in case trans probs are not deterministic
