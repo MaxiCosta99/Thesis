@@ -46,14 +46,15 @@ For now dirichlet sampling is just taking the mean
     A BIT CHEATING
 
 
-In two agent setting a matrix update is turned off
-
-
 I have implemented the MC version for two agents, for one agent not yet
 
-Now using min instead of mean as MC estimator of SFE
-    works, but risky in case trans probs are not deterministic
+    Now using min instead of mean as MC estimator of SFE
+        works, but risky in case trans probs are not deterministic
 
-In general using MC is ass
-    Too high variance and actions sampled are terrible
-    This is mainly due to the fact that risk is a VERY POOR GUIDANCE
+    In general using MC is ass
+        Too high variance and actions sampled are terrible
+        This is mainly due to the fact that risk is a VERY POOR GUIDANCE
+
+
+Even if can infer states using bayesian
+    imagining inferences is still based on true inference, to fix so that both can be bayesian

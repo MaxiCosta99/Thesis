@@ -142,7 +142,7 @@ def EM(obs_eps, acts_eps, tm_unres, gm, start, end, num_steps):
 
 
 def dir_VI(logl, data, num_iters, num_samples, prior, step_size, natgrad):
- 
+
     dim_params = prior.shape[0]
 
     var = prior#np.random.uniform(0.5,2,dim_params)
@@ -152,9 +152,12 @@ def dir_VI(logl, data, num_iters, num_samples, prior, step_size, natgrad):
   
     for _ in range(num_iters):
 
+        
         print("I DID NOT CRASH YET")
 
         sumv = np.sum(var)
+
+        print(f"This is the sum of the dir parameters of the goals: {sumv}")
 
         kl_grad = - sp.polygamma(1, sumv)*(sumv-sump) + (var-prior)*sp.polygamma(1, var)
 
@@ -203,6 +206,7 @@ def dir_VI(logl, data, num_iters, num_samples, prior, step_size, natgrad):
         phi = np.log(var)
 
         grad_phi = grad * var
+        grad_phi = np.clip(grad_phi, -1, 1)
         phi = phi + grad_phi*step_size
 
         var = np.exp(phi)

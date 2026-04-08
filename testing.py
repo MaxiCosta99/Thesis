@@ -14,7 +14,17 @@ for u in range(num_acts):
         u_imagined.append(u)
         H.append(sfes_mean)
 
-print(np.min(us))
 
-print(u_imagined)
-print(H)
+arr = np.array([[0,1,2,4],[0,2,3,4]])
+#test = np.broadcast_to(arr, (2,4,4))
+#test = np.broadcast_to(test, (2,2,4,4))
+#test = np.repeat(arr[np.newaxis,:,:], axis = 0, repeats = 2)
+#test = np.repeat(test[:,:,np.newaxis,:], axis = 2, repeats = 4)
+
+arr = np.array([1,2,3])
+arr2 = np.array([4,5,6])
+arrlist = [arr, arr2]
+
+newlist = arrlist.copy()
+
+print(newlist)
