@@ -87,31 +87,34 @@ class agent:
 
       gcp = self.goal_states.copy()
 
-      
+      print(sampled_goal.shape)
       if sampled_goal is None:
 
           if self.selfish == True:
 
               if self.agent_id == 0:
-                  filtered_goals = np.einsum("ijkl -> jl", self.goal_states[1].copy()) #np.mean(self.goal_states[1].copy(), axis = (0,2))
+                  filtered_goals = np.mean(self.goal_states[1].copy(), axis = (0,2)) #np.einsum("ijkl -> jl", self.goal_states[1].copy()) 
                   #filtered_states = np.einsum("ijkl -> jl", self.s[1].copy())
               else:
-                  filtered_goals =  np.einsum("ijkl -> ik", self.goal_states[1].copy()) #np.mean(self.goal_states[1].copy(), axis = (1,3))
+                  filtered_goals =  np.mean(self.goal_states[1].copy(), axis = (1,3)) #np.einsum("ijkl -> ik", self.goal_states[1].copy()) 
                   #filtered_states = np.einsum("ijkl -> ik", self.s[1].copy())
           else:
               filtered_goals = self.goal_states[1].copy()
               #filtered_states = self.s[1].copy()
         
-          sampled_goal = self.sample(filtered_goals)
+          sampled_goal = self.sample(filtered_goals).copy()
           #whose_s = filtered_states
       
       else:
+          
           if self.selfish == True:
               sampled_goal = sampled_goal.reshape(self.goal_states[1].shape[1], self.goal_states[1].shape[3])
-      
+              
+
       #sampled_goal = self.sample(self.goal_states.copy())
       
       self.change_goals(new_goal_states = sampled_goal, who = 1)
+
 
       actions, actions_H = self.SFE(1)
 
@@ -129,9 +132,9 @@ class agent:
       if self.selfish == True:
 
           if self.agent_id == 0:
-              filtered_goals = np.einsum("ijkl -> ik", self.goal_states[0].copy()) #np.mean(self.goal_states[0].copy(), axis = (1,3)) #
+              filtered_goals = np.einsum("ijkl -> ik", self.goal_states[0].copy()) #np.mean(self.goal_states[0].copy(), axis = (1,3)) 
           else:
-              filtered_goals = np.einsum("ijkl -> jl", self.goal_states[0].copy()) #np.mean(self.goal_states[0].copy(), axis = (0,2)) #
+              filtered_goals = np.einsum("ijkl -> jl", self.goal_states[0].copy()) #np.mean(self.goal_states[0].copy(), axis = (0,2)) 
       else:
           filtered_goals = self.goal_states[0].copy()
         
@@ -171,6 +174,8 @@ class agent:
 
   def logl_action(self, a, sampled_goal):
 
+      #print(sampled_goal.shape)
+
       actions, actions_H = self.SFE_call_other(sampled_goal)
 
       if a in actions:
@@ -191,7 +196,7 @@ class agent:
 
 
       if self.selfish == True:
-          prior = np.einsum("ijkl -> jl", self.goal_states[1].copy()) #np.mean(self.goal_states[1].copy(), axis = (0,2))
+          prior = np.mean(self.goal_states[1].copy(), axis = (0,2)) #np.einsum("ijkl -> jl", self.goal_states[1].copy()) #
 
       else:
           prior = self.goal_states[1].copy()
@@ -199,8 +204,8 @@ class agent:
       prior_shape = prior.shape
       prior = prior.reshape(-1)
       
-      num_iters = 10
-      num_samples = 100
+      num_iters = 100
+      num_samples = 10
       step_size = 0.01
       natgrad = True
 
@@ -548,6 +553,7 @@ class agent:
             #filtered_goals = self.goal_states[who].copy()
             filtered_states = self.s[who].copy()
         
+        
         whose_goals = self.goal_states[who]
         whose_s = filtered_states
 
@@ -571,6 +577,8 @@ class agent:
 
 
     #print(f"These is {self.agent_id}'s perspective of {who} goal : {whose_goals}")
+
+    print(f"this is the shape of the goals in the risk: {whose_goals.shape}")
 
     assert whose_s.shape == whose_goals.shape, f"The shape of the states is: {whose_s.shape} \n and that of the goals is: {whose_goals.shape}"
 
@@ -841,22 +849,24 @@ class agent:
                 #print(f"This is the action considered {u} at depth {current_depth}")
                 self.act(u)
                 future_EFE = self.SFEr2(current_depth + 1)
+                #print(f"This is the future EFE at depth {current_depth} of agent {self.agent_id} considering the perspective of {who}: {future_EFE}")
               else:
                 self.act_other(u)
                 future_EFE = self.SFEr(current_depth + 1,who = 1)
+                #print(f"This is his future EFE at depth 1: {future_EFE}")
 
             else:
               self.act(u)
               future_EFE = self.SFEr(current_depth + 1, who = 0)
               
-              H[i] = future_EFE# + H[i]#*np.exp(current_depth)
+            H[i] = future_EFE# + H[i]#*np.exp(current_depth) #PORCA TROIA PER N TAB NO JIVA NIA PLU DUTA STA MERDA
 
             self.s = cp.copy()
         
           #print(f"THIS IS THE ACTION BEING CONSIDERED AT DETPH {current_depth}: {u} with EFE {np.round(H[i],2)}")
     
         us.append(u_imagined)
-        sfes.append(H)
+        sfes.append(H)  
 
 
 
@@ -1022,10 +1032,11 @@ class agent:
               self.act(u)
 
               future_EFE = self.SFEr2(current_depth + 1)
-              Hropu[l] = future_EFE #+ Hropu[l]
+              Hropu[l] = future_EFE + Hropu[l]
+              
               self.s = cp4.copy()
 
-
+          #Hropu[0] = Hropu[0] + 1000000
           Hrop[k] = np.dot(softmax(Hropu, 1), Hropu)
           self.s = cp3.copy()
 
@@ -1062,7 +1073,8 @@ class agent:
 
       #print(f"This is the current belief state of agent {self.agent_id}: {np.einsum("ijkl -> jl", self.s[0].copy())}")
       #print(f"These are the actions considered by agent {self.agent_id} with their probability {u_imagined}, {np.round(uprobs,2)}")
-      print(f"These are the actions considered by agent {self.agent_id} with their SFE {u_imagined}, {np.round(H,2)}")
+      #print(f"These are the actions considered by agent {self.agent_id} with their SFE {u_imagined}, {np.round(H,2)}")
+      print(f"These are the actions considered by agent {self.agent_id} with their dec_temp 1 probs {u_imagined}, {np.round(np.log(softmax(H,1)),2)}")
       print(f"This is the real action taken by agent {self.agent_id}: {action}")
 
       assert len(u_imagined) > 0, "No action imagined"
@@ -1332,7 +1344,7 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
 
         w.change_true_s(agent1, u)
         o = w.give_o(agent1)
-        print(f"This is the observation given by the world: {o}")
+        #print(f"This is the observation given by the world: {o}")
         positions.append(pos_conv(w.true_s))
         agentselfposB.append(agent1.s.copy())
         observationsB.append(o)

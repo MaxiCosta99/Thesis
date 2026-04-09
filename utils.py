@@ -206,6 +206,7 @@ def dir_VI(logl, data, num_iters, num_samples, prior, step_size, natgrad):
         phi = np.log(var)
 
         grad_phi = grad * var
+        print(f"this is the gradient: {grad_phi}")
         grad_phi = np.clip(grad_phi, -1, 1)
         phi = phi + grad_phi*step_size
 

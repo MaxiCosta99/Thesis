@@ -54,6 +54,7 @@ agent0_goals[0,:,2,:] = rp
 agent0_goals[1,:,3,:] = rp
 agent0_goals[0,:,3,:] = pp
 agent0_goals[1,:,2,:] = pp
+agent0_goals = agent0_goals/pp
 agent0_goals_cat = agent0_goals/np.sum(agent0_goals)
 
 agent1_goals = np.ones(start_s.shape)
@@ -61,9 +62,19 @@ agent1_goals[:,0,:,2] = rp
 agent1_goals[:,1,:,3] = rp
 agent1_goals[:,0,:,3] = pp
 agent1_goals[:,1,:,2] = pp
+agent1_goals = agent1_goals/pp
 agent1_goals_cat = agent1_goals/np.sum(agent1_goals)
 
+assert(np.min(agent0_goals) == 1)
+assert(np.min(agent1_goals) == 1)
+
+
 uncertain_goals = np.ones((2,2,4,4))
+"""
+ug_sample = np.random.dirichlet(np.ones(64), 1)
+uncertain_goals = ug_sample.reshape(uncertain_goals.shape)
+
+print(uncertain_goals)"""
 
 #test0_goals = np.ones((2,2,4,4))*1e-5
 #test1_goals = np.ones((2,2,4,4))*1e-5
@@ -83,7 +94,7 @@ uncertain_goals = np.ones((2,2,4,4))
 #agent0_fullgoals = np.stack((agent0_goals_cat, agent1_goals), axis = 0)
 #agent1_fullgoals = np.stack((agent1_goals_cat, agent0_goals), axis = 0)
 
-agent0_fullgoals = [agent0_goals_cat, uncertain_goals] #agent1_goals]
+agent0_fullgoals = [agent0_goals_cat, uncertain_goals] #agent1_goals
 agent1_fullgoals = [agent1_goals_cat, agent0_goals]
 
 
@@ -121,8 +132,8 @@ social1 = False
 terms0 = ["risk"]
 terms1 = ["risk"]
 
-sampling0 = "mean"
-sampling1 = "mean"
+sampling0 = "sample"
+sampling1 = "sample"
 
 branch_reductor0 = "cut"
 branch_reductor1 = "cut"
@@ -133,7 +144,7 @@ mc_samples1 = 100
 selfish0 = True
 selfish1 = True
 
-empathetic0 = False
+empathetic0 = True
 empathetic1 = False
 
 
@@ -141,8 +152,8 @@ nr_moves = 3
 
 
 #cheeses = [[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1]]
-cheeses = [[0,0],[1,0],[0,1],[1,1]]
-#cheeses = [[0,0]]
+#cheeses = [[0,0],[1,0],[0,1],[1,1]]
+cheeses = [[0,0]]
 epochs = len(cheeses)
 
 
@@ -176,4 +187,4 @@ epochs_positions, epochs_A_matrices, epochs_agent_worlds, epochs_beliefs, epochs
 
 
 
-animate(epochs_positions, cheeses, A_matrices = epochs_A_matrices, agent_worlds = epochs_agent_worlds, epochs_beliefs = epochs_beliefs, epochs_desires = epochs_desires)
+#animate(epochs_positions, cheeses, A_matrices = epochs_A_matrices, agent_worlds = epochs_agent_worlds, epochs_beliefs = epochs_beliefs, epochs_desires = epochs_desires)
