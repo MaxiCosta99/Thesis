@@ -94,7 +94,7 @@ print(uncertain_goals)"""
 #agent0_fullgoals = np.stack((agent0_goals_cat, agent1_goals), axis = 0)
 #agent1_fullgoals = np.stack((agent1_goals_cat, agent0_goals), axis = 0)
 
-agent0_fullgoals = [agent0_goals_cat, uncertain_goals] #agent1_goals
+agent0_fullgoals = [agent0_goals_cat, agent1_goals]#uncertain_goals]
 agent1_fullgoals = [agent1_goals_cat, agent0_goals]
 
 
@@ -144,22 +144,23 @@ mc_samples1 = 100
 selfish0 = True
 selfish1 = True
 
-empathetic0 = True
+empathetic0 = False
 empathetic1 = False
 
 
 nr_moves = 3
 
 
-#cheeses = [[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1]]
+cheeses = [[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1]]
 #cheeses = [[0,0],[1,0],[0,1],[1,1]]
-cheeses = [[0,0]]
+#cheeses = [[0,0]]
 epochs = len(cheeses)
 
 
 exploration = False
 bayes_infer = False
 A_learning = False
+infer_only_on_last_action = False
 
 
 agent0 = agent(agent0_full_A.copy(), start_B.copy(), copy.deepcopy(full_start_s), U = U.copy(), goal_states = copy.deepcopy(agent0_fullgoals), goal_obs = agent0_fullgoals_obs.copy(),
@@ -179,9 +180,8 @@ agent1 = agent(agent1_full_A.copy(), start_B.copy(), copy.deepcopy(full_start_s)
 
 
 
-
 epochs_positions, epochs_A_matrices, epochs_agent_worlds, epochs_beliefs, epochs_desires = run(agent0 = agent0, agent1 = agent1, epochs = epochs, nr_moves = nr_moves, reason_depth = reason_depth, start_beliefs = copy.deepcopy(full_start_s), cheeses = cheeses,
-                                                                                                exploration_phase = exploration, bayes_infer = bayes_infer, A_learning = A_learning)
+                                                                                                exploration_phase = exploration, bayes_infer = bayes_infer, A_learning = A_learning, infer_only_on_last_action = infer_only_on_last_action)
 
 #print(epochs_beliefs[0][0][0])
 

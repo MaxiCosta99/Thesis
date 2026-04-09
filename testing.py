@@ -16,15 +16,13 @@ for u in range(num_acts):
 
 
 arr = np.array([[0,1,2,4],[0,2,3,4]])
+print(arr.shape)
 #test = np.broadcast_to(arr, (2,4,4))
 #test = np.broadcast_to(test, (2,2,4,4))
 #test = np.repeat(arr[np.newaxis,:,:], axis = 0, repeats = 2)
 #test = np.repeat(test[:,:,np.newaxis,:], axis = 2, repeats = 4)
 
-arr = np.array([1,2,3])
-arr2 = np.array([4,5,6])
-arrlist = [arr, arr2]
+arr = arr.reshape(-1)
+print(arr)
 
-newlist = arrlist.copy()
-
-print(newlist)
+print(np.exp(7))

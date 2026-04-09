@@ -60,6 +60,12 @@ class agent:
     self.selfish = selfish
     self.empathetic = empathetic
 
+    self.goal_learning_vars = {"m": 0,
+                              "v": 0,
+                              "t": 1
+                              }
+
+
   
   
   def restart_agent(self, start_s, reason_depth, nr_moves):
@@ -87,7 +93,7 @@ class agent:
 
       gcp = self.goal_states.copy()
 
-      print(sampled_goal.shape)
+      #print(sampled_goal.shape)
       if sampled_goal is None:
 
           if self.selfish == True:
@@ -184,12 +190,14 @@ class agent:
           action_prob = softmax(action_H, 1)
 
       else:
-          action_prob = 0
+          action_prob = 0.01 
     
-      return np.log(action_prob + 1e-2)
+      return np.log(action_prob)
 
 
   def update_goals_other(self, a):
+
+      assert self.social == True, f"Can't update goals of other agents if agent is not social"
       """#old version, not bayesian
       #self.goal_states[1] = self.goal_states[1].copy()+self.s[1].copy()
       #self.goal_states[1] = self.goal_states[1]/np.sum(self.goal_states[1])"""
@@ -204,19 +212,21 @@ class agent:
       prior_shape = prior.shape
       prior = prior.reshape(-1)
       
-      num_iters = 100
-      num_samples = 10
-      step_size = 0.01
-      natgrad = True
+      num_iters = 5
+      num_samples = 20 
+      step_size = 0.5
+      natgrad = False
 
-      new_desires = dir_VI(self.logl_action, a, num_iters, num_samples, prior, step_size, natgrad)
+      goal_learning_vars = self.goal_learning_vars
+      new_desires, goal_learning_vars = dir_VI(self.logl_action, a, num_iters, num_samples, prior, step_size, natgrad, goal_learning_vars)
+      self.goal_learning_vars = goal_learning_vars
 
       new_desires_reshaped = new_desires.reshape(prior_shape)
 
       if self.selfish == True:
           temp = np.repeat(new_desires_reshaped[np.newaxis,:,:], axis = 0, repeats = 2)
           new_desires_reshaped = np.repeat(temp[:,:,np.newaxis,:], axis = 2, repeats = 4)
-          new_desires_reshaped = new_desires_reshaped/8
+          new_desires_reshaped = new_desires_reshaped
       else:
           assert 1/0, f"This should not be working, WHAT THE HELL? If no selfish sampling should crash"
 
@@ -578,7 +588,7 @@ class agent:
 
     #print(f"These is {self.agent_id}'s perspective of {who} goal : {whose_goals}")
 
-    print(f"this is the shape of the goals in the risk: {whose_goals.shape}")
+    #print(f"this is the shape of the goals in the risk: {whose_goals.shape}")
 
     assert whose_s.shape == whose_goals.shape, f"The shape of the states is: {whose_s.shape} \n and that of the goals is: {whose_goals.shape}"
 
@@ -681,6 +691,7 @@ class agent:
 
       pu = np.zeros(len(self.U))
       for u in self.U:
+        #print(f"Agent {self.agent_id} is am doing an EFE computation in imagine_u wrt {who}")
         pu[u] = self.compute_EFE(u, who)
 
 
@@ -834,17 +845,15 @@ class agent:
         cp = self.s.copy()
         for i,u in enumerate(u_imagined):
 
-
+          #print(f"Agent {self.agent_id} is doing an EFE computation in SFE wrt {who} at depth {current_depth}")
           H[i]=self.compute_EFE(u,who)
 
           #print(f"THIS IS THE ACTION BEING CONSIDERED AT DETPH {current_depth}: {u} with starting EFE {np.round(H[i],2)}")
 
 
-
           if current_depth < self.reason_depth:
-
             if self.social == True:
-
+              
               if who == 0:
                 #print(f"This is the action considered {u} at depth {current_depth}")
                 self.act(u)
@@ -852,7 +861,9 @@ class agent:
                 #print(f"This is the future EFE at depth {current_depth} of agent {self.agent_id} considering the perspective of {who}: {future_EFE}")
               else:
                 self.act_other(u)
+                #print("I am doing this")
                 future_EFE = self.SFEr(current_depth + 1,who = 1)
+                #print("I managed to do it")
                 #print(f"This is his future EFE at depth 1: {future_EFE}")
 
             else:
@@ -935,7 +946,7 @@ class agent:
       cp2 = self.s.copy()
       for j,u in enumerate(u_imagined):
 
-        
+        #print(f"Agent {self.agent_id} is doing an EFE computation in SFEr wrt {who} at depth {current_depth}")
         Hrou[j] = self.compute_EFE(u,who)
 
         #print(f"THIS IS THE ACTION BEING CONSIDERED AT DETPH {current_depth}: {u} with starting EFE {np.round(Hrou[j],2)}")
@@ -1023,6 +1034,7 @@ class agent:
           Hropu = np.zeros(len(u_imagined))
 
           for l,u in enumerate(u_imagined):
+            #print(f"I am doing an EFE computation in Sfer2")
             Hropu[l] = self.compute_EFE(u,0)
 
 
@@ -1250,7 +1262,8 @@ def true_A(base, pretrain_strength = float):
     return agent0_A, agent1_A
 
 def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_beliefs = np.array, cheeses = list,
-        exploration_phase = bool, bayes_infer = bool, A_learning = bool):
+        exploration_phase = bool, bayes_infer = bool, A_learning = bool,
+        infer_only_on_last_action = bool):
 
 
 
@@ -1297,7 +1310,7 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
 
     beliefs.append((agent0.s.copy(),agent1.s.copy()))
 
-    for _ in range(nr_moves):
+    for k in range(nr_moves):
 
       if agent0.agent_id == 0: #if agent0 in env 1 he explores, if agent1 in env 0 he explores
   
@@ -1334,7 +1347,7 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
 
         
         u = agent1.pick_action()
-        #u = 1
+        #u = 0
 
 
         agent1.act(u)
@@ -1365,12 +1378,11 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
 
 
         if agent0.empathetic == True:
-            agent0.update_goals_other(u)
-
-
-
-
-
+            if infer_only_on_last_action == True:
+                if k == nr_moves-1:
+                    agent0.update_goals_other(u)
+            else:
+                agent0.update_goals_other(u)
 
 
         

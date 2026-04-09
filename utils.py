@@ -141,7 +141,7 @@ def EM(obs_eps, acts_eps, tm_unres, gm, start, end, num_steps):
  
 
 
-def dir_VI(logl, data, num_iters, num_samples, prior, step_size, natgrad):
+def dir_VI(logl, data, num_iters, num_samples, prior, step_size, natgrad, goal_learning_vars):
 
     dim_params = prior.shape[0]
 
@@ -149,8 +149,7 @@ def dir_VI(logl, data, num_iters, num_samples, prior, step_size, natgrad):
 
     sump = np.sum(prior)
 
-  
-    for _ in range(num_iters):
+    for j in range(num_iters):
 
         
         print("I DID NOT CRASH YET")
@@ -170,7 +169,7 @@ def dir_VI(logl, data, num_iters, num_samples, prior, step_size, natgrad):
 
         exp_grad = np.sum(samples, axis = 0)/num_samples
 
-        """ With baseline
+        """#With baseline
         logls = np.zeros(num_samples)
         scores = np.zeros((num_samples, dim_params))
 
@@ -181,8 +180,8 @@ def dir_VI(logl, data, num_iters, num_samples, prior, step_size, natgrad):
 
         baseline = np.mean(logls)
 
-        exp_grad = np.mean((logls - baseline)[:, None] * scores, axis=0)
-        """
+        exp_grad = np.mean((logls - baseline)[:, None] * scores, axis=0)"""
+        
 
         grad = exp_grad - kl_grad
 
@@ -202,18 +201,48 @@ def dir_VI(logl, data, num_iters, num_samples, prior, step_size, natgrad):
             nat_grad = g_over_d - correction * np.sum(g_over_d)
             grad = nat_grad
             
-
+        print(f"These are the old dirs: {var}")
         phi = np.log(var)
 
         grad_phi = grad * var
+
+        
         print(f"this is the gradient: {grad_phi}")
-        grad_phi = np.clip(grad_phi, -1, 1)
-        phi = phi + grad_phi*step_size
+
+        """
+        m = goal_learning_vars["m"]
+        v = goal_learning_vars["v"]
+        t = goal_learning_vars["t"]"""
+        
+        grad_phi = np.clip(grad_phi, -10, 10)
+
+        """
+        beta1 = 0.95
+        beta2 = 0.999
+
+        m = beta1 * m + (1 - beta1) * grad_phi
+        v = beta2 * v + (1 - beta2) * (grad_phi ** 2)
+
+        goal_learning_vars["m"] = m
+        goal_learning_vars["v"] = v
+        goal_learning_vars["t"] = t+1
+
+        m_hat = m / (1 - beta1**t)
+        v_hat = v / (1 - beta2**t)"""
+
+    
+
+
+        phi = phi + step_size * grad_phi# m_hat# / (np.sqrt(v_hat) + 1e-5)
 
         var = np.exp(phi)
 
+        
+
+        print(f"These are the new dirs: {var}")
+
     
-    return var
+    return var, goal_learning_vars
 
 
 
