@@ -28,8 +28,13 @@ class agent:
                goal_states, reason_depth = int, dec_temp = float, chatty_boy = bool,
                little_o_imaginer = bool, o_imagination_breadth = int, o_prob_threshold = float,
                little_u_imaginer = bool, u_imagination_breadth = int, u_prob_threshold = float,
-               goal_obs = None, moves_to_go = int, bayes_observe = bool, terms = list):
-        self.A = A
+               goal_obs = None, moves_to_go = int, bayes_observe = bool, terms = list,
+               obs_model_given = bool, infer_before_update_obs_model = bool):
+        if obs_model_given == True:
+            self.A = A.copy()
+        else:
+            #self.A = np.random.beta(10,1,(5,4,2)).copy()
+            self.A = np.random.uniform(0,1,(5,4,2)).copy()
         self.s = s
         self.B = B
         self.U = U
@@ -47,14 +52,17 @@ class agent:
         self.moves_to_go = moves_to_go
         self.bayes_observe = bayes_observe
         self.terms = terms
+        self.obs_model_given = obs_model_given
+        self.infer_before_update_obs_model = infer_before_update_obs_model
 
 
     def update_A(self, o, s):
         self.s = s
-        self.observe(o) #infer which state we were in before updating A
+        if self.infer_before_update_obs_model == True:
+            self.observe(o) #infer which state we were in before updating A
         self.A[o,:] = self.A[o,:] + self.s
 
-
+        assert self.obs_model_given == False, f"The obs model is given, can't update it"
 
 
     def observe(self, o):
@@ -127,6 +135,11 @@ class agent:
       goals_flat = np.reshape(self.goal_states, (self.goal_states.shape[0]*self.goal_states.shape[1]))
       #risk = np.dot(s_flat.T, np.log(np.divide(s_flat, goals_flat)))
       #risk = np.sum(np.where(s_flat != 0, np.multiply(s_flat, np.log(np.divide(s_flat, goals_flat))), 0))
+      #print(f"This is the log belief over states: {np.log(s_flat)} \n and these are the log goals: {np.log(goals_flat)}")
+      #print(f" This is the divide term: {np.divide(s_flat, goals_flat)}")
+      #print(f" This is the log divide term: {np.where(s_flat != 0, np.log(np.divide(s_flat,goals_flat)), 0)}")
+
+
       temp = np.multiply(s_flat, np.log(np.divide(s_flat,goals_flat)))
       risk = np.nansum(temp)
       return risk
@@ -168,8 +181,49 @@ class agent:
       temp3 = np.dot(temp2, s_flat)
       nov = np.dot(s_flat, temp3)"""
 
+      assert self.obs_model_given == False, f"Novelty is useless if the observation model is not being learned"
 
       return nov
+
+    def compute_epistemic_value(self):
+
+
+      
+        A_flat = self.A.reshape(self.A.shape[0], -1)
+        A_flat_norm = A_flat/np.sum(A_flat, axis = 0)
+        s_flat = self.s.reshape(-1)
+
+        num_obs = self.A.shape[0]
+
+        po = np.dot(A_flat_norm, s_flat)
+
+
+        ponz = po[po!=0]
+        O = np.arange(num_obs)
+        Onz = O[po!=0]
+
+        #print(f"These are the Onz: {Onz}")
+        #print(f"These are the ponz: {ponz}")
+
+        kls = np.zeros(Onz.shape[0])
+
+        bbo = self.s.copy() #belief before observing
+        bbo_flat = bbo.reshape(-1)
+        for j,o in enumerate(Onz):
+            self.observe(o)
+            bao = self.s.copy() #belief after observing
+            bao_flat = bao.reshape(-1)
+            kls[j] = np.dot(bao_flat, np.where(bao_flat != 0, np.log(np.divide(bao_flat, bbo_flat)), 0))
+
+            self.s = bbo.copy()
+
+        epi_value = np.dot(ponz, kls)
+
+        assert not np.isnan(epi_value), "Epi value is NaN"
+        assert np.allclose(np.sum(po), 1.0), f"Observation probabilities do not sum to 1, they sum to {np.sum(po)}"
+
+        return epi_value
+
 
 
     def compute_EFE(self, u):
@@ -177,14 +231,32 @@ class agent:
       self.act(u)
 
       toconsider = 0
+      term_values = {}
+
       if "abg" in self.terms:
-          toconsider = self.compute_ambiguity()
-      elif "risk" in self.terms:
-          toconsider = toconsider + self.compute_risk()
-      elif "risk_obs" in self.terms:
-          toconsider = toconsider + self.compute_risk_obs()
-      elif "nov" in self.terms:
-          toconsider = toconsider - self.compute_novelty()
+          abg = self.compute_ambiguity()
+          term_values["abg"] = abg
+          toconsider = toconsider + abg
+
+      if "risk" in self.terms:
+          risk = self.compute_risk()
+          term_values["risk"] = risk
+          toconsider = toconsider + risk
+
+      if "risk_obs" in self.terms:
+          risk_obs = self.compute_risk_obs()
+          term_values["risk_obs"] = risk_obs
+          toconsider = toconsider + risk_obs
+
+      if "nov" in self.terms:
+          novelty = self.compute_novelty()
+          term_values["novelty"] = novelty
+          toconsider = toconsider - novelty
+
+      if "epi_value" in self.terms:
+          epi_val = self.compute_epistemic_value()
+          term_values["epi_value"] = epi_val
+          toconsider = toconsider - epi_val
       
       EFE = toconsider
       
@@ -200,7 +272,7 @@ class agent:
       #EFE = -novelty
 
       self.s = cp
-      return EFE
+      return EFE, term_values
 
 
     def imagine_u(self):
@@ -208,7 +280,8 @@ class agent:
 
         pu = np.zeros(len(self.U))
         for u in self.U:
-          pu[u] = self.compute_EFE(u)
+          #print(f"This is the action I am considering {u}")
+          pu[u], _ = self.compute_EFE(u)
 
         #print(f"pus inside the imagine_u before softmax {pu}")
         pu = softmax(pu, 1)
@@ -252,16 +325,20 @@ class agent:
 
       cp = self.s
       for i,u in enumerate(u_imagined):
-        H[i]=self.compute_EFE(u)
+        H[i], term_values = self.compute_EFE(u)
+        #print(f" The term values of action {u} are {term_values} \n The EFE of that action is {H[i]}")
+
         if current_depth < self.reason_depth:
           self.act(u)
           future_EFE = self.SFEr(current_depth + 1)
           H[i] = H[i] + future_EFE
+          #print(f"The future term of that action is {future_EFE}")
+          #print(f"The SFE of that action is {H[i]}")
           self.s = cp
 
       #print(f"these are the probabilities before picking and before softmax: {H}")
 
-      return u_imagined, softmax(np.array(H), self.dec_temp) #1 is the decision temperature
+      return u_imagined, np.array(H)
 
 
     def SFEr(self, current_depth):
@@ -280,7 +357,7 @@ class agent:
 
         cp2 = self.s
         for j,u in enumerate(u_imagined):
-          Hrou[j] = self.compute_EFE(u)
+          Hrou[j], _ = self.compute_EFE(u)
 
           if current_depth < self.reason_depth:
             self.act(u)
@@ -288,8 +365,9 @@ class agent:
             Hrou[j] = Hrou[j] + future_EFE
             self.s = cp2
 
-
+        #print(f"The are the EFEs {Hrou} \n of the imagined actions {u_imagined} \n after the imaginary observation {o} \n at depth {current_depth}")
         pur = softmax(Hrou, 1) #makes more sense to have 1 decision temperature since this is counterfactual reasoning
+        #print(f"And these are the probabilities of those actions: {pur}")
 
         Hro[i] = np.dot(pur, Hrou)
         self.s = cp1
@@ -306,11 +384,17 @@ class agent:
 
     def pick_action(self):
 
-      u_imagined, Gu = self.SFE()
+      u_imagined, Hu = self.SFE()
 
-      #print(f"This are the probabilities when i pick: {Gu}")
+      #print(f"These are the actions imagined {u_imagined} \n With their EFE's: {Hu}")
 
-      action = np.random.choice(u_imagined, p = Gu)
+      pu = softmax(Hu, self.dec_temp)
+
+      action = np.random.choice(u_imagined, p = pu)
+
+      #print(f"This is the real action taken: {action}")
+
+
 
       self.moves_to_go = self.moves_to_go - 1
 
@@ -385,7 +469,7 @@ def pretrain(me: agent, epochs, start_s_beliefs, cheeses):
     return epoch_positions
 
 
-def run(me = agent, epochs = int, nr_actions = int, start_beliefs = np.ndarray, reason_depth = int, nr_moves = int, cheeses = list):
+def run(me = agent, epochs = int, start_beliefs = np.ndarray, reason_depth = int, nr_moves = int, cheeses = list):
     
     epoch_positions = []
     epoch_acts = []
@@ -408,15 +492,9 @@ def run(me = agent, epochs = int, nr_actions = int, start_beliefs = np.ndarray, 
         acts = []
 
 
-        for _ in range(nr_actions):
+        for _ in range(nr_moves):
             u = me.pick_action()
             me.act(u)
-
-            #print("This is the action taken: " + str(u))
-            #print("This is the state after moving: " + str(me.s))
-
-            #print(f"The risk of the action is: {me.compute_risk_obs()}")
-            #print(f"The novelty of the action is: {me.compute_novelty()}")
 
             states.append(me.s)
 
@@ -429,7 +507,7 @@ def run(me = agent, epochs = int, nr_actions = int, start_beliefs = np.ndarray, 
             positions.append(pos_conv(w.true_s))
             acts.append(u)
             observations.append(o)
-            #print("This is the state after observing: " + str(me.s))
+
         
 
         epoch_positions.append(positions)
@@ -438,19 +516,19 @@ def run(me = agent, epochs = int, nr_actions = int, start_beliefs = np.ndarray, 
 
 
 
-        """for o,s in zip(observations, states):
-            me.update_A(o,s)
+        
+        if me.obs_model_given == False:
+            for o,s in zip(observations, states):
+                me.update_A(o,s)
 
-            #print(f"This is the updated A {me.A}")"""
+            #print(f"This is the updated A {me.A}")
 
                    
-        me.A = EM(epoch_obs, epoch_acts, me.B.copy(), me.A.copy(), start_beliefs, states[-1], 100).copy()
+        #me.A = EM(epoch_obs, epoch_acts, me.B.copy(), me.A.copy(), start_beliefs, states[-1], 100).copy()
+        tempA = np.reshape(me.A.copy(), (me.A.shape[0], -1), order = "F")
+        tempA = tempA/np.sum(tempA, axis = 0, keepdims = True)
+        A_matrices.append(tempA)
 
-        A_matrices.append(me.A.reshape(me.A.shape[0], -1).copy())
-
-        
-        if e == epochs-10:
-            me.dec_temp = 0.1
 
     return epoch_positions, A_matrices
 

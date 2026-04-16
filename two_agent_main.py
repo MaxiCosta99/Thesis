@@ -30,8 +30,8 @@ full_start_s = np.repeat(start_s[np.newaxis,:,:,:,:],repeats = 2, axis =0)
 agent0_A, agent1_A = true_A(base = 0.1, pretrain_strength =10) #TRUE A
 
 # use smaller Dirichlet prior so updates change probabilities faster
-#agent0_A = 0.1 * np.ones((11,2,2,4,4))
-#agent1_A = 0.1 * np.ones((11,2,2,4,4))
+agent0_A = 0.1 * np.ones((11,2,2,4,4))
+agent1_A = 0.1 * np.ones((11,2,2,4,4))
 
 
 
@@ -126,7 +126,7 @@ little_u_imaginer = True
 u_imagination_breadth = 3
 u_prob_threshold = 0.1
 
-social0 = False
+social0 = True
 social1 = False
 
 terms0 = ["risk"]
@@ -157,9 +157,9 @@ cheeses = [[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,1],[0,0],[1,0],[0,1],[1,
 epochs = len(cheeses)
 
 
-exploration = False
+exploration = True
 bayes_infer = False
-A_learning = False
+A_learning = True
 infer_only_on_last_action = False
 
 
@@ -187,4 +187,4 @@ epochs_positions, epochs_A_matrices, epochs_agent_worlds, epochs_beliefs, epochs
 
 
 
-#animate(epochs_positions, cheeses, A_matrices = epochs_A_matrices, agent_worlds = epochs_agent_worlds, epochs_beliefs = epochs_beliefs, epochs_desires = epochs_desires)
+animate(epochs_positions, cheeses, A_matrices = epochs_A_matrices, agent_worlds = epochs_agent_worlds, epochs_beliefs = epochs_beliefs, epochs_desires = epochs_desires)

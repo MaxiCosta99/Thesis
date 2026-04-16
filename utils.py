@@ -1,5 +1,6 @@
 import numpy as np
 import scipy.special as sp
+import matplotlib.pyplot as plt
 
 #np.set_printoptions(precision = 2)
 
@@ -273,6 +274,72 @@ def logl_action(a, agent, sampled_goal):
     return np.log(action_prob + 1e-10)
 
 
+
+def A_KL(A, learned_A):
+    kl = np.where(A != 0, A *np.log(np.divide(A, learned_A)), 0)
+    return np.sum(kl)
+
+def A_KL_plotter(true_A, learned_As_eps):
+
+    true_A_state = np.reshape(true_A, (5,8), order = "F")
+    true_A_invstate = np.zeros(true_A_state.shape)
+    true_A_invstate[:,0:4] = true_A_state[:,4:8]
+    true_A_invstate[:,4:8] = true_A_state[:,0:4] 
+    kl_eps = []
+    learned_As_eps_end = []
+    for learned_As in learned_As_eps:
+
+        kl = []
+        for A in learned_As:
+            kl_state = A_KL(true_A_state, A)
+            kl_invstate = A_KL(true_A_invstate, A)
+            kl.append(min(kl_state, kl_invstate))
+
+        if kl[-1] == kl_state: #states have not been switched
+            learned_As_eps_end.append(A)
+        else:
+            temp = np.zeros(A.shape)
+            temp[:,0:4] = A[:,4:8]
+            temp[:,4:8] = A[:,0:4]
+            learned_As_eps_end.append(temp)
+
+        kl_eps.append(kl)
+    
+
+    final_As = np.array(learned_As_eps_end)
+    final_As_mean = np.mean(final_As, axis = 0, keepdims = False)
+    #print(np.round(final_As_mean, 2))
+
+    data = np.array(kl_eps)
+    mean = np.mean(data, axis = 0)
+    std = np.std(data, axis = 0)
+    x = np.arange(len(kl))
+
+    plt.figure()
+    plt.plot(x, mean, label = "Mean KL divergence")
+    plt.fill_between(x, mean - std, mean + std, alpha = 0.2, label = "Std Dev")
+    plt.xlabel("Episode")
+    plt.ylabel("KL divergence")
+    plt.title("KL divergence between true A and learned A over episodes")
+    plt.xticks(np.arange(0, len(kl), step = 5), np.arange(0, len(kl), step = 5))
+    plt.legend()
+    plt.show()
+
+
+
+
+    fig, axes = plt.subplots(1, 2, figsize=(20, 10))
+
+    im0 = axes[0].imshow(true_A_state, vmin=0, vmax=1)
+    axes[0].set_title("True observation model A")
+
+    im1 = axes[1].imshow(final_As_mean, vmin=0, vmax=1)
+    axes[1].set_title("Average final learned observation model A")
+
+    # Shared colorbar
+    fig.colorbar(im1, ax=axes.ravel().tolist())
+
+    plt.show()
 
 
 
