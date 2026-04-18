@@ -47,14 +47,14 @@ goal_obs = goal_obs/np.sum(goal_obs)
 
 U = [0,1,2,3]
 reason_depth = 1
-dec_temp = 1000
+dec_temp = 0.1
 little_o_imaginer = True
 o_imagination_breadth = 2
-o_prob_threshold = 0.00000001
+o_prob_threshold = 0.1
 
 little_u_imaginer = True
 u_imagination_breadth = 3
-u_prob_threshold = 0.00000001
+u_prob_threshold = 0.1
 
 bayes_observe = True
 terms = ["epi_value", "risk"]
@@ -82,19 +82,24 @@ maxi = agent(start_A, start_B, start_s, U = U, goal_states = goals,
 #print(risk)
 #1/0
 
-def exp_learning_A_no_infer(num_tries = int):
+def exp_learning_A():
     reason_depth = 1
-    dec_temp = 1000
-    nr_moves = 10
+    dec_temp = 0.1
+    nr_moves = 5
     obs_model_given = False
-    infer_before_update_obs_model = False
+    infer_before_update_obs_model = True
+    A_update_method = "EM_all_ep" #either "default", "EM_all_ep", "EM_current_ep"
+    EM_steps = 100 #Not used anymore, EM now until convergence
+    num_eps = 50
+    num_tries = 5
+    terms = ["nov"]
+    random_moves = False
+
+
 
     cheeses = []
-    num_eps = 50
-
     for i in range(num_eps):
         cheeses.append(np.random.choice([0,1]))
-
     epochs = len(cheeses)
 
     diff_tries_A = []
@@ -104,7 +109,8 @@ def exp_learning_A_no_infer(num_tries = int):
                 little_o_imaginer = little_o_imaginer, o_imagination_breadth = o_imagination_breadth, o_prob_threshold = o_prob_threshold,
                 little_u_imaginer = little_u_imaginer, u_imagination_breadth= u_imagination_breadth, u_prob_threshold = u_prob_threshold,
              goal_obs = goal_obs, moves_to_go = nr_moves, bayes_observe = bayes_observe, terms = terms,
-             obs_model_given = obs_model_given, infer_before_update_obs_model = infer_before_update_obs_model)
+             obs_model_given = obs_model_given, infer_before_update_obs_model = infer_before_update_obs_model,
+             update_A_method = A_update_method, EM_steps = EM_steps, random_moves = random_moves)
 
         agent_positions, A_matrices = run(maxi, epochs, start_s, reason_depth, nr_moves, cheeses)
 
@@ -113,7 +119,9 @@ def exp_learning_A_no_infer(num_tries = int):
     #print(f"This is the learned matrix A: \n {np.round(A_matrices[-1],2)}")
     A_KL_plotter(true_A, diff_tries_A)
 
-exp_learning_A_no_infer(num_tries = 10)
+
+
+exp_learning_A()
 
 
 #animate(agent_positions, cheeses, A_matrices)

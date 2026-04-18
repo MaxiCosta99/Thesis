@@ -69,6 +69,7 @@ def Mstep(inf_states_eps, gm, obs_eps):
     
     for inf_states, obs in zip(inf_states_eps, obs_eps): 
         for i in range(inf_states.shape[0]-1):
+            
             gm[obs[i]] = gm[obs[i]] + inf_states[i+1]
 
     norm_gm = gm/np.sum(gm + 0.01, axis = 0, keepdims = True)
@@ -88,7 +89,7 @@ def unnorm_Mstep(inf_states_eps, gm, obs_eps):
     return unnorm_gm
 
 
-def EM(obs_eps, acts_eps, tm_unres, gm, start, end, num_steps):
+def EM(obs_eps, acts_eps, tm_unres, num_steps, gm = None, start = None, end = None):
 
     
     tm = np.zeros((tm_unres.shape[0],2*tm_unres.shape[1], 2*tm_unres.shape[2]))
@@ -100,40 +101,49 @@ def EM(obs_eps, acts_eps, tm_unres, gm, start, end, num_steps):
     
     #np.random.seed(0)
 
+    if start is None:
+        start = np.random.beta(10,1,(4,2)) #in case I don't want to use init
+        start = start.reshape(-1)
+        start = start/np.sum(start)
+
+    else:
+        start = start.reshape(-1)
+
     
-    start = np.random.beta(10,1,(4,2)) #in case I don't want to use init
-    start = start.reshape(-1)+0.01
-    start = start/np.sum(start)
+    if end is None:
+        end = np.random.beta(10,1,(4,2)) #in case I don't want to use init
+        end = end.reshape(-1)
+        end = end/np.sum(end)
 
-    end = np.random.beta(10,1,(4,2)) #in case I don't want to use init
-    end = end.reshape(-1)+0.01 
-    end = end/np.sum(end)
+    else:
+        end = end.reshape(-1)
 
     
-    gm = np.random.beta(10,1,(5,4,2))
-    gm = gm/np.sum(gm, axis = 0, keepdims = True)
+    if gm is None:
+        gm = np.random.beta(10,1,(5,4,2))
+        gm = gm/np.sum(gm, axis = 0, keepdims = True)
+        gm_shape = gm.shape
+        gm = gm.reshape(gm.shape[0], -1)
 
-    gm_shape = gm.shape
-    
+    else:
+        gm = gm
+        gm = gm/np.sum(gm, axis = 0, keepdims = True)
+        gm_shape = gm.shape
+        gm = gm.reshape(gm.shape[0],-1)
 
 
-    flat_gm = gm.reshape(gm.shape[0], -1)
-    EM_gm = flat_gm/np.sum(flat_gm+0.01, axis = 0, keepdims = True)
+    #agent_gm = gm.copy() #which dirichlet GM the agent updates, for now the random start
 
-    agent_gm = EM_gm.copy() #which dirichlet GM the agent updates, for now the random start
-
-
-    #test_gm = np.zeros(gm_shape)
-
-    for _ in range(num_steps):
+    gm_old = np.zeros(gm.shape)
+    #for _ in range(num_steps):
+    while np.linalg.norm(gm - gm_old) > 0.001:
+        gm_old = gm.copy()
         
-        inf_states = Estep(obs_eps, acts_eps, start, end, tm, EM_gm)
+        inf_states = Estep(obs_eps, acts_eps, start, end, tm, gm)
 
-        EM_gm = Mstep(inf_states, EM_gm, obs_eps)
+        gm = Mstep(inf_states, gm, obs_eps)
 
-    unnorm_gm = unnorm_Mstep(inf_states, agent_gm, obs_eps)
-
-    reshaped_gm = unnorm_gm.reshape(gm_shape)
+    reshaped_gm = np.reshape(gm,gm_shape, order = "F")
 
     return reshaped_gm
 
@@ -305,12 +315,12 @@ def A_KL_plotter(true_A, learned_As_eps):
 
         kl_eps.append(kl)
     
-
     final_As = np.array(learned_As_eps_end)
     final_As_mean = np.mean(final_As, axis = 0, keepdims = False)
     #print(np.round(final_As_mean, 2))
 
     data = np.array(kl_eps)
+    assert data.all() >= 0, "KL divergences should be positive"
     mean = np.mean(data, axis = 0)
     std = np.std(data, axis = 0)
     x = np.arange(len(kl))

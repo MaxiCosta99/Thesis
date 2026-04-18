@@ -29,12 +29,13 @@ class agent:
                little_o_imaginer = bool, o_imagination_breadth = int, o_prob_threshold = float,
                little_u_imaginer = bool, u_imagination_breadth = int, u_prob_threshold = float,
                goal_obs = None, moves_to_go = int, bayes_observe = bool, terms = list,
-               obs_model_given = bool, infer_before_update_obs_model = bool):
+               obs_model_given = bool, infer_before_update_obs_model = bool,
+               update_A_method = str, EM_steps = int, random_moves = bool):
         if obs_model_given == True:
             self.A = A.copy()
         else:
-            #self.A = np.random.beta(10,1,(5,4,2)).copy()
-            self.A = np.random.uniform(0,1,(5,4,2)).copy()
+            self.A = np.random.beta(10,1,(5,4,2)).copy()
+            #self.A = np.random.uniform(0,1,(5,4,2)).copy()
         self.s = s
         self.B = B
         self.U = U
@@ -55,14 +56,32 @@ class agent:
         self.obs_model_given = obs_model_given
         self.infer_before_update_obs_model = infer_before_update_obs_model
 
+        self.update_A_method = update_A_method
+        self.EM_steps = EM_steps
+        self.random_moves = random_moves
 
-    def update_A(self, o, s):
-        self.s = s
-        if self.infer_before_update_obs_model == True:
-            self.observe(o) #infer which state we were in before updating A
-        self.A[o,:] = self.A[o,:] + self.s
+
+    def update_A(self, ep_observations, ep_states, ep_actions):
+
+        old_A_shape = self.A.shape
+
+        if self.update_A_method == "default":
+            for o,s in zip(ep_observations[-1], ep_states[-1]):
+                self.s = s
+                if self.infer_before_update_obs_model == True:
+                    self.observe(o) #infer which state we were in before updating A
+                self.A[o,:] = self.A[o,:] + self.s
+        
+        if self.update_A_method == "EM_all_ep":
+            self.A = EM(ep_observations, ep_actions, self.B.copy(), num_steps = self.EM_steps, gm = None, start = None, end = None)
+
+        if self.update_A_method == "EM_current_ep":
+            self.A = EM(ep_observations[-1:], ep_actions[-1:], self.B.copy(), num_steps = self.EM_steps, gm = self.A, start = None, end = None)
+
+
 
         assert self.obs_model_given == False, f"The obs model is given, can't update it"
+        assert self.A.shape == old_A_shape, f"The shape of A changed from {old_A_shape} to {self.A.shape} after updating, something is wrong"
 
 
     def observe(self, o):
@@ -383,16 +402,20 @@ class agent:
 
 
     def pick_action(self):
+      
+      if self.random_moves == True:
+          action = np.random.choice(self.U)
+          
+      else:
+          u_imagined, Hu = self.SFE()
 
-      u_imagined, Hu = self.SFE()
+          #print(f"These are the actions imagined {u_imagined} \n With their EFE's: {Hu}")
 
-      #print(f"These are the actions imagined {u_imagined} \n With their EFE's: {Hu}")
+          pu = softmax(Hu, self.dec_temp)
 
-      pu = softmax(Hu, self.dec_temp)
+          action = np.random.choice(u_imagined, p = pu)
 
-      action = np.random.choice(u_imagined, p = pu)
-
-      #print(f"This is the real action taken: {action}")
+          #print(f"This is the real action taken: {action}")
 
 
 
@@ -474,6 +497,7 @@ def run(me = agent, epochs = int, start_beliefs = np.ndarray, reason_depth = int
     epoch_positions = []
     epoch_acts = []
     epoch_obs = []
+    epoch_states = []
     A_matrices = []
     A_matrices.append(me.A.reshape(me.A.shape[0], -1).copy())
 
@@ -513,18 +537,16 @@ def run(me = agent, epochs = int, start_beliefs = np.ndarray, reason_depth = int
         epoch_positions.append(positions)
         epoch_obs.append(observations)
         epoch_acts.append(acts)
+        epoch_states.append(states)
 
 
 
         
         if me.obs_model_given == False:
-            for o,s in zip(observations, states):
-                me.update_A(o,s)
+            me.update_A(epoch_obs, epoch_states, epoch_acts)
 
-            #print(f"This is the updated A {me.A}")
+            print(f"This is the updated A {np.round(np.reshape(me.A, (me.A.shape[0], -1)),2)}")
 
-                   
-        #me.A = EM(epoch_obs, epoch_acts, me.B.copy(), me.A.copy(), start_beliefs, states[-1], 100).copy()
         tempA = np.reshape(me.A.copy(), (me.A.shape[0], -1), order = "F")
         tempA = tempA/np.sum(tempA, axis = 0, keepdims = True)
         A_matrices.append(tempA)
