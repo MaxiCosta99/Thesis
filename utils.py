@@ -72,7 +72,9 @@ def Mstep(inf_states_eps, gm, obs_eps):
             
             gm[obs[i]] = gm[obs[i]] + inf_states[i+1]
 
-    norm_gm = gm/np.sum(gm + 0.01, axis = 0, keepdims = True)
+    gm = gm+1e-6
+
+    norm_gm = gm/np.sum(gm, axis = 0, keepdims = True)
 
     return norm_gm
 
@@ -132,7 +134,7 @@ def EM(obs_eps, acts_eps, tm_unres, num_steps, gm = None, start = None, end = No
         gm = gm.reshape(gm.shape[0],-1)
 
 
-    #agent_gm = gm.copy() #which dirichlet GM the agent updates, for now the random start
+    agent_gm = gm.copy() #which dirichlet GM the agent updates, for now the random start
 
     gm_old = np.zeros(gm.shape)
     #for _ in range(num_steps):
@@ -143,6 +145,9 @@ def EM(obs_eps, acts_eps, tm_unres, num_steps, gm = None, start = None, end = No
 
         gm = Mstep(inf_states, gm, obs_eps)
 
+
+    gm = unnorm_Mstep(inf_states, agent_gm, obs_eps)
+
     reshaped_gm = np.reshape(gm,gm_shape, order = "F")
 
     return reshaped_gm
@@ -151,8 +156,21 @@ def EM(obs_eps, acts_eps, tm_unres, num_steps, gm = None, start = None, end = No
  
  
 
+def dir_VI(logl, data, prior, goal_learning_vars = dict, opt_params = dict):
 
-def dir_VI(logl, data, num_iters, num_samples, prior, step_size, natgrad, goal_learning_vars):
+    natgrad = opt_params["natgrad"]
+    log_space = opt_params["log_space"]
+    lambd = opt_params["reg_strength"]
+    beta1 = opt_params["beta1"]
+    beta2 = opt_params["beta2"]
+    num_iters = opt_params["num_iters"]
+    num_samples = opt_params["num_samples"]
+    optimizer = opt_params["optimizer"]
+    clipping = opt_params["clipping"]
+    clips = opt_params["clips"]
+    step_size = opt_params["step_size"]
+
+
 
     dim_params = prior.shape[0]
 
@@ -161,13 +179,11 @@ def dir_VI(logl, data, num_iters, num_samples, prior, step_size, natgrad, goal_l
     sump = np.sum(prior)
 
     for j in range(num_iters):
-
-        
-        print("I DID NOT CRASH YET")
+        #print("-------------------------------------------")
 
         sumv = np.sum(var)
 
-        print(f"This is the sum of the dir parameters of the goals: {sumv}")
+        #print(f"This is the sum of the dir parameters of the goals: {sumv}")
 
         kl_grad = - sp.polygamma(1, sumv)*(sumv-sump) + (var-prior)*sp.polygamma(1, var)
 
@@ -211,46 +227,70 @@ def dir_VI(logl, data, num_iters, num_samples, prior, step_size, natgrad, goal_l
 
             nat_grad = g_over_d - correction * np.sum(g_over_d)
             grad = nat_grad
-            
-        print(f"These are the old dirs: {var}")
-        phi = np.log(var)
-
-        grad_phi = grad * var
 
         
-        print(f"this is the gradient: {grad_phi}")
-
-        """
-        m = goal_learning_vars["m"]
-        v = goal_learning_vars["v"]
-        t = goal_learning_vars["t"]"""
         
-        grad_phi = np.clip(grad_phi, -10, 10)
 
-        """
-        beta1 = 0.95
-        beta2 = 0.999
 
-        m = beta1 * m + (1 - beta1) * grad_phi
-        v = beta2 * v + (1 - beta2) * (grad_phi ** 2)
-
-        goal_learning_vars["m"] = m
-        goal_learning_vars["v"] = v
-        goal_learning_vars["t"] = t+1
-
-        m_hat = m / (1 - beta1**t)
-        v_hat = v / (1 - beta2**t)"""
+        if log_space == True:
 
     
+            phi = np.log(var)
+            grad = grad * var
+            grad = grad - lambd * phi #regularization
 
 
-        phi = phi + step_size * grad_phi# m_hat# / (np.sqrt(v_hat) + 1e-5)
+            m = goal_learning_vars["m"]
+            v = goal_learning_vars["v"]
+            t = goal_learning_vars["t"]
 
-        var = np.exp(phi)
 
-        
+            m = beta1 * m + (1 - beta1) * grad
+            v = beta2 * v + (1 - beta2) * (grad ** 2)
 
-        print(f"These are the new dirs: {var}")
+            goal_learning_vars["m"] = m
+            goal_learning_vars["v"] = v
+            goal_learning_vars["t"] = t+1
+
+            m_hat = m / (1 - beta1**t)
+            v_hat = v / (1 - beta2**t)
+
+            if optimizer == "momentum":
+                opt_grad = grad*m_hat
+
+            elif optimizer == "adam_softstart":
+                opt_grad = grad*m/(np.sqrt(v_hat) + 1e-5)
+
+            elif optimizer == "momentum_softstart":
+                opt_grad = grad*m
+
+            elif optimizer == "adam":
+                opt_grad = grad*m_hat/(np.sqrt(v_hat) + 1e-5)
+
+            elif optimizer == None:
+                opt_grad = grad
+            
+            else:
+                assert 1/0, "What?? THERE IS NO OTHER OPTIMIZER"
+
+
+            if clipping == True:
+                grad = np.clip(grad, clips[0], clips[1])
+            
+            #print(f"These are the pre opt gradients: \n {grad} ")
+            #print(f"this are the post opt gradients: \n {opt_grad}")
+
+            
+            #print(f"These are the old dirs in exp_space:\n  {phi}")
+            phi = phi + step_size * grad
+            #print(f"These are the new dirs in exp space: \n {phi}")
+            var = np.exp(phi)
+            
+        else:
+            assert 1/0, "Can do only things in exp space for now"
+
+
+    
 
     
     return var, goal_learning_vars
@@ -332,6 +372,7 @@ def A_KL_plotter(true_A, learned_As_eps):
     plt.ylabel("KL divergence")
     plt.title("KL divergence between true A and learned A over episodes")
     plt.xticks(np.arange(0, len(kl), step = 5), np.arange(0, len(kl), step = 5))
+    plt.ylim(0,13)
     plt.legend()
     plt.show()
 

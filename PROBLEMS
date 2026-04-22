@@ -10,13 +10,7 @@ Still weird that by uniform sample of all actinos worked, but just sampling a fe
         VERY SUSPICIUOS
 
 
-SINGLE AGENT MAIN NOW OUTDATED
-    NO REASON DEPTH CHANGE
-    INTRODUCE AGENT REINITIALIZATION
-    ALSO REDO THE TERMS CHANGE
 
-
-I have a bayesian term to use bayesian inference, to remove it
 
 Current situazia
     Both know both observations and both actions
@@ -26,9 +20,6 @@ Transform to grey now does not assure p is between 0 and 1
     NOT USING THIS ANYMORE
 
 
-Why do learned goals not perform as well as given goals?
-    They are the same distribution after a while
-        New cmap plot shows they are not
 
 Should disentangle GM A, one with 5 obs for env1 and one with 7 obs for env2
     when performing inference use GM of respective world
@@ -58,3 +49,27 @@ I have implemented the MC version for two agents, for one agent not yet
 
 Even if can infer states using bayesian
     imagining inferences is still based on true inference, to fix so that both can be bayesian
+
+
+for now only using sampling of goals
+    NO SAMPLING OF GM
+    NO SAMPLING OF STATE
+
+
+
+
+    53 e 47 (0,1)
+    55 e 45 (0,1) going in opposite direction :(
+
+
+ {'natgrad': False,
+ 'log_space': True,
+ 'reg_strength': 0,
+ 'beta1': 0.7345328315455324,
+ 'beta2': 0.9533329125495537,
+ 'num_iters': 77,
+ 'num_samples':241,
+ 'optimizer': 'adam',
+ 'clipping': False,
+ 'clips': None,
+ 'step_size': 0.04797779900649818}

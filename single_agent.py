@@ -76,7 +76,7 @@ class agent:
             self.A = EM(ep_observations, ep_actions, self.B.copy(), num_steps = self.EM_steps, gm = None, start = None, end = None)
 
         if self.update_A_method == "EM_current_ep":
-            self.A = EM(ep_observations[-1:], ep_actions[-1:], self.B.copy(), num_steps = self.EM_steps, gm = self.A, start = None, end = None)
+            self.A = EM(ep_observations[-1:], ep_actions[-1:], self.B.copy(), num_steps = self.EM_steps, gm = self.A.copy(), start = None, end = None)
 
 
 
@@ -204,13 +204,13 @@ class agent:
 
       return nov
 
-    def compute_epistemic_value(self):
+    def compute_epistemic_value(self, start_belief):
 
 
       
-        A_flat = self.A.reshape(self.A.shape[0], -1)
+        A_flat = self.A.reshape(self.A.shape[0], -1).copy()
         A_flat_norm = A_flat/np.sum(A_flat, axis = 0)
-        s_flat = self.s.reshape(-1)
+        s_flat = self.s.reshape(-1).copy()
 
         num_obs = self.A.shape[0]
 
@@ -221,6 +221,8 @@ class agent:
         O = np.arange(num_obs)
         Onz = O[po!=0]
 
+        
+
         #print(f"These are the Onz: {Onz}")
         #print(f"These are the ponz: {ponz}")
 
@@ -228,6 +230,7 @@ class agent:
 
         bbo = self.s.copy() #belief before observing
         bbo_flat = bbo.reshape(-1)
+        bba_flat = start_belief.reshape(-1) #NO DON'T USE THIS, MAKE NO SENSE
         for j,o in enumerate(Onz):
             self.observe(o)
             bao = self.s.copy() #belief after observing
@@ -246,7 +249,7 @@ class agent:
 
 
     def compute_EFE(self, u):
-      cp = self.s
+      cp = self.s.copy()
       self.act(u)
 
       toconsider = 0
@@ -273,7 +276,7 @@ class agent:
           toconsider = toconsider - novelty
 
       if "epi_value" in self.terms:
-          epi_val = self.compute_epistemic_value()
+          epi_val = self.compute_epistemic_value(cp)
           term_values["epi_value"] = epi_val
           toconsider = toconsider - epi_val
       
@@ -345,7 +348,7 @@ class agent:
       cp = self.s
       for i,u in enumerate(u_imagined):
         H[i], term_values = self.compute_EFE(u)
-        #print(f" The term values of action {u} are {term_values} \n The EFE of that action is {H[i]}")
+        # print(f" The term values of action {u} are {term_values} \n The EFE of that action is {H[i]}")
 
         if current_depth < self.reason_depth:
           self.act(u)
@@ -410,6 +413,7 @@ class agent:
           u_imagined, Hu = self.SFE()
 
           #print(f"These are the actions imagined {u_imagined} \n With their EFE's: {Hu}")
+
 
           pu = softmax(Hu, self.dec_temp)
 
@@ -492,7 +496,7 @@ def pretrain(me: agent, epochs, start_s_beliefs, cheeses):
     return epoch_positions
 
 
-def run(me = agent, epochs = int, start_beliefs = np.ndarray, reason_depth = int, nr_moves = int, cheeses = list):
+def run(me = agent, num_eps = int, start_beliefs = np.ndarray, reason_depth = int, nr_moves = int):
     
     epoch_positions = []
     epoch_acts = []
@@ -501,8 +505,14 @@ def run(me = agent, epochs = int, start_beliefs = np.ndarray, reason_depth = int
     A_matrices = []
     A_matrices.append(me.A.reshape(me.A.shape[0], -1).copy())
 
+        
+    
+    cheeses = []
+    for i in range(num_eps):
+        cheeses.append(np.random.choice([0,1]))
 
-    for e in range(epochs):
+
+    for e in range(num_eps):
         print(" ")
         print("__________________________________")
         print("New world: " + str(e))
@@ -552,7 +562,7 @@ def run(me = agent, epochs = int, start_beliefs = np.ndarray, reason_depth = int
         A_matrices.append(tempA)
 
 
-    return epoch_positions, A_matrices
+    return epoch_positions, A_matrices, cheeses
 
 
 if __name__ == "__main__":
