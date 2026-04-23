@@ -99,7 +99,7 @@ little_u_imaginer = True
 u_imagination_breadth = 3
 u_prob_threshold = 0.1
 
-social0 = True
+social0 = False
 social1 = False
 
 terms0 = ["risk"]
@@ -117,7 +117,7 @@ mc_samples1 = 100
 selfish0 = True #to use only one world goal states
 selfish1 = True #to use only one world goal states
 
-empathetic0 = True #to learn goals of other
+empathetic0 = False #to learn goals of other
 empathetic1 = False #to learn goals of ohter
 
 bayes_observe0 = True
@@ -126,19 +126,93 @@ bayes_observe1 = True
 futuro_prosperoso0 = True #if true only use last efe
 futuro_prosperoso1 = True #if true only use last efe
 
-random_action1 = True
+random_action1 = False
 random_action2 = False
 
 
 nr_moves = 3
-epochs = 10
+epochs = 50
 
-obs_model_given = True
+obs_model_given = False
 A_learning = not obs_model_given
 exploration = A_learning
 infer_only_on_last_action = True
 
 desires_other_showtype = "mean"
+
+
+beta1 = np.random.uniform(0.8,0.9)
+beta2 = np.random.uniform(0.9,1)
+num_iters = 1#np.random.randint(100,300)
+num_samples = 1#np.random.randint(50,100)
+step_size = np.random.uniform(0.001,0.1)
+optimizer = "adam"
+
+
+
+
+opt_params = {"natgrad" : False,
+                "log_space" : True,
+                "reg_strength" : 0,
+                "beta1" : beta1,
+                "beta2" : beta2,
+                "num_iters" : num_iters,
+                "num_samples" : num_samples,
+                "optimizer" : optimizer,
+                "clipping" : False,
+                "clips" : None,
+                "step_size" : step_size}
+
+
+
+agent0 = agent(agent0_full_A.copy(), start_B.copy(), copy.deepcopy(full_start_s), U = U.copy(), goal_states = copy.deepcopy(agent0_fullgoals), goal_obs = agent0_fullgoals_obs.copy(),
+        reason_depth = reason_depth, dec_temp = dec_temp, chatty_boy = 0,
+        little_o_imaginer = little_o_imaginer, o_imagination_breadth = o_imagination_breadth, o_prob_threshold = o_prob_threshold,
+        little_u_imaginer = little_u_imaginer, u_imagination_breadth= u_imagination_breadth, u_prob_threshold = u_prob_threshold,
+        agent_id = 0, moves_to_go = nr_moves, social = social0, terms = terms0, sampling = sampling0,
+        branch_reductor = branch_reductor0, mc_samples = mc_samples0, selfish = selfish0, empathetic = empathetic0,
+        bayes_observe = bayes_observe0, obs_model_given = obs_model_given, futuro_prosperoso = futuro_prosperoso0,
+        random_action = random_action1)
+
+agent1 = agent(agent1_full_A.copy(), start_B.copy(), copy.deepcopy(full_start_s), U = U.copy(), goal_states = copy.deepcopy(agent1_fullgoals), goal_obs = agent1_fullgoals_obs.copy(),
+        reason_depth = reason_depth, dec_temp = dec_temp, chatty_boy = 0,
+        little_o_imaginer = little_o_imaginer, o_imagination_breadth = o_imagination_breadth, o_prob_threshold = o_prob_threshold,
+        little_u_imaginer = little_u_imaginer, u_imagination_breadth= u_imagination_breadth, u_prob_threshold = u_prob_threshold,
+        agent_id = 1, moves_to_go = nr_moves, social = social1, terms = terms1, sampling = sampling1,
+        branch_reductor = branch_reductor1, mc_samples = mc_samples1, selfish = selfish1, empathetic = empathetic1,
+        bayes_observe = bayes_observe1, obs_model_given = obs_model_given, futuro_prosperoso = futuro_prosperoso1,
+        random_action = random_action2)
+
+
+
+
+
+epochs_positions, epochs_A_matrices, epochs_agent_worlds, epochs_beliefs, epochs_desires, cheeses = run(agent0 = agent0, agent1 = agent1, epochs = epochs, nr_moves = nr_moves, reason_depth = reason_depth, start_beliefs = copy.deepcopy(full_start_s),
+                                                                                                        exploration_phase = exploration, A_learning = A_learning, infer_only_on_last_action = infer_only_on_last_action,
+                                                                                                        opt_params = opt_params)
+        
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+"""
 
 ANDIAMOACULO = 1
 
@@ -226,7 +300,7 @@ epochs_positions, epochs_A_matrices, epochs_agent_worlds, epochs_beliefs, epochs
                                                                                                 exploration_phase = exploration, A_learning = A_learning, infer_only_on_last_action = infer_only_on_last_action)
 
 
-
+"""
 
 animate(epochs_positions, cheeses, A_matrices = epochs_A_matrices, agent_worlds = epochs_agent_worlds, epochs_beliefs = epochs_beliefs, epochs_desires = epochs_desires,
         desires_other_showtype = desires_other_showtype)

@@ -1,6 +1,6 @@
 import numpy as np
 import math
-from utils import EM
+from utils import EM, A_KL
 
 def softmax(x, beta):
     return np.exp(-x/beta)/np.sum(np.exp(-x/beta))
@@ -59,6 +59,7 @@ class agent:
         self.update_A_method = update_A_method
         self.EM_steps = EM_steps
         self.random_moves = random_moves
+        self.true_A = A.copy()
 
 
     def update_A(self, ep_observations, ep_states, ep_actions):
@@ -73,11 +74,30 @@ class agent:
                 self.A[o,:] = self.A[o,:] + self.s
         
         if self.update_A_method == "EM_all_ep":
-            self.A = EM(ep_observations, ep_actions, self.B.copy(), num_steps = self.EM_steps, gm = None, start = None, end = None)
+            A = EM(ep_observations, ep_actions, self.B.copy(), num_steps = self.EM_steps, A_param_shape = (5,2,4), s_param_shape = (2,4), gm = None, start = None, end = None)
 
         if self.update_A_method == "EM_current_ep":
-            self.A = EM(ep_observations[-1:], ep_actions[-1:], self.B.copy(), num_steps = self.EM_steps, gm = self.A.copy(), start = None, end = None)
+            A = EM(ep_observations[-1:], ep_actions[-1:], self.B.copy(), num_steps = self.EM_steps, A_param_shape = self.A.shape, s_param_shape = self.s.shape, gm = self.A.copy(), start = None, end = None)
 
+        #THIS PART IS FOR ADJUST STATE SWITCHING
+        A_flat = A/np.sum(A, axis = 0)
+
+        A_invstate = np.zeros(A.shape)
+        A_invstate[:,0:4] = A[:,4:8]
+        A_invstate[:,4:8] = A[:,0:4]
+        A_invstate_flat = A_invstate/np.sum(A_invstate, axis = 0)
+
+        true_A = self.true_A.copy()
+        true_A = true_A.reshape((5,8), order = "F")
+        true_A_flat = true_A/np.sum(true_A, axis = 0)
+
+        kl_state = A_KL(true_A_flat, A_flat)
+        kl_invstate = A_KL(true_A_flat, A_invstate_flat)
+
+        if kl_invstate < kl_state: #states have been switched
+            self.A = A_invstate.reshape((5,4,2), order = "F")
+        else:
+            self.A = A.reshape((5,4,2), order = "F")
 
 
         assert self.obs_model_given == False, f"The obs model is given, can't update it"
@@ -503,7 +523,7 @@ def run(me = agent, num_eps = int, start_beliefs = np.ndarray, reason_depth = in
     epoch_obs = []
     epoch_states = []
     A_matrices = []
-    A_matrices.append(me.A.reshape(me.A.shape[0], -1).copy())
+    A_matrices.append(me.A.reshape(me.A.shape[0], -1, order = "F").copy())
 
         
     
@@ -551,13 +571,14 @@ def run(me = agent, num_eps = int, start_beliefs = np.ndarray, reason_depth = in
 
 
 
+
         
         if me.obs_model_given == False:
             me.update_A(epoch_obs, epoch_states, epoch_acts)
 
             print(f"This is the updated A {np.round(np.reshape(me.A, (me.A.shape[0], -1)),2)}")
 
-        tempA = np.reshape(me.A.copy(), (me.A.shape[0], -1), order = "F")
+        tempA = np.reshape(me.A.copy(), (me.A.shape[0], -1), order = "F") #this is to convert matrix into classic (2,4) (instead of the (4,2) used inside the algorithm)
         tempA = tempA/np.sum(tempA, axis = 0, keepdims = True)
         A_matrices.append(tempA)
 

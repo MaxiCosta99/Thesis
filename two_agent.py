@@ -1,5 +1,5 @@
 import numpy as np
-from utils import EM, dir_VI
+from utils import EM, dir_VI, A_KL
 
 def softmax(x, beta = 1):
   return np.exp(-x/beta)/np.sum(np.exp(-x/beta))
@@ -77,6 +77,8 @@ class agent:
     self.futuro_prosperoso = futuro_prosperoso
 
     self.random_action = random_action
+
+    self.true_A = A
 
 
 
@@ -168,24 +170,34 @@ class agent:
       return actions, actions_H
 
 
-  def update_A(self, o, s, who):
+  def update_A(self, ep_observations, ep_actions, agent_id):
+    assert 1/0, f"Update A is DEAD"
+    if self.update_A_method == "default":
+        assert 1/0, f"This is not used anymore!!!"
     
-    backup = self.s.copy()
+        """backup = self.s.copy()
 
-    self.s = s.copy()
-    self.observe(o,0) #infer which state we were in
+        self.s = s.copy()
+        self.observe(o,0) #infer which state we were in
 
-    """
-    print(f"This is the state before observing: {s[0]}")
-    print(f"This is the state after observing: {self.s[0]}")
-    print(f"This is the observation: {o}")
-    print(f"This is A before update: {self.A[0,o,...]}")"""
+        
+        print(f"This is the state before observing: {s[0]}")
+        print(f"This is the state after observing: {self.s[0]}")
+        print(f"This is the observation: {o}")
+        print(f"This is A before update: {self.A[0,o,...]}")
 
-    self.A[who,o,...] = self.A[who,o,...].copy() + self.s[0].copy()
+        self.A[who,o,...] = self.A[who,o,...].copy() + self.s[0].copy()
 
-    #print(f"This is the updated A: {self.A[0,o,...]}")
+        #print(f"This is the updated A: {self.A[0,o,...]}")
 
-    self.s = backup
+        self.s = backup"""
+
+    elif self.update_A_method == "EM_all_ep":
+        assert 1/0, f"This method is not in use anymore"
+        
+
+  
+
 
   def change_goals(self, new_goal_states, who):
       #new_gs_res = new_goal_states.reshape(self.goal_states[who].shape)
@@ -1037,6 +1049,10 @@ class agent:
       return action
   
   def explore(self):
+
+    action = np.random.choice(self.U)
+
+    """
     old_terms = self.terms.copy()
     #old_rd = self.reason_depth
 
@@ -1049,7 +1065,7 @@ class agent:
     #self.reason_depth = old_rd
 
     #action = np.random.choice(self.U)
-    action = np.random.choice(u_imagined, p = uprobs)
+    action = np.random.choice(u_imagined, p = uprobs)"""
 
     self.moves_to_go = self.moves_to_go - 1
 
@@ -1208,6 +1224,19 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
   epochs_A_matrices = [] #A matrices of each agent (my, his)
   epochs_beliefs = []
   epochs_desires = []
+  
+  epochs_observations0 = {"leftworld": [], #leftworld is the proper agent0 env
+                          "rightworld": []} #rightworld is the world of agent1
+
+  epochs_observations1 = {"leftworld": [],
+                          "rightworld": []}
+
+  epochs_actions0 = {"leftworld": [],
+                      "rightworld": []}
+
+  epochs_actions1 = {"leftworld": [],
+                      "rightworld": []}
+  
 
   epochs_A_matrices.append((agent0.A.copy(), agent1.A.copy()))
   epochs_desires.append((agent0.goal_states.copy(),agent1.goal_states.copy())) #THIS NOT IN USE
@@ -1238,22 +1267,23 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
 
     positions = []
     beliefs = []
-    observationsA = []
     agentselfposA = []
-    
-    
-    observationsB = []
     agentselfposB = []
-
+    
+    agent0_acts = []
+    agent1_acts = []
+    agent0_obs = []
+    agent1_obs = []
 
 
 
     beliefs.append((agent0.s.copy(),agent1.s.copy()))
 
+
+
     for k in range(nr_moves):
 
       if agent0.agent_id == 0: #if agent0 in env 1 he explores, if agent1 in env 0 he explores
-
 
     
         u = agent0.pick_action()
@@ -1266,7 +1296,7 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
         
         positions.append(pos_conv(w.true_s))
         agentselfposA.append(agent0.s.copy())
-        observationsA.append(o)
+     
 
         
         agent0.observe(o,0)
@@ -1275,6 +1305,9 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
         agent1.observe(o,1)
 
         beliefs.append((agent0.s.copy(),agent1.s.copy()))
+        
+        agent0_acts.append(u)
+        agent0_obs.append(o)
 
 
 
@@ -1293,8 +1326,7 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
         #print(f"This is the observation given by the world: {o}")
         positions.append(pos_conv(w.true_s))
         agentselfposB.append(agent1.s.copy())
-        observationsB.append(o)
-        
+    
       
         agent0.observe(o,0)
         agent0.observe(o,1)
@@ -1302,6 +1334,9 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
         agent1.observe(o,1)
           
         beliefs.append((agent0.s.copy(),agent1.s.copy()))
+
+        agent1_acts.append(u)
+        agent1_obs.append(o)
 
 
 
@@ -1329,12 +1364,19 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
         #print(f"This is the observation given by the world: {o}")
         positions.append(pos_conv(w.true_s))
         agentselfposA.append(agent0.s.copy())
-        observationsA.append(o)
+ 
 
         agent0.observe(o,0)
         agent0.observe(o,1)
         agent1.observe(o,0)
         agent1.observe(o,1)
+
+        beliefs.append((agent0.s.copy(),agent1.s.copy()))
+
+        agent0_acts.append(u)
+        agent0_obs.append(o)
+
+
         
 
 
@@ -1347,14 +1389,21 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
         #print(f"This is the observation given by the world: {o}")
         positions.append(pos_conv(w.true_s))
         agentselfposB.append(agent1.s.copy())
-        observationsB.append(o)
+      
 
         agent0.observe(o,0)
         agent0.observe(o,1)
         agent1.observe(o,0)
         agent1.observe(o,1)
 
+        beliefs.append((agent0.s.copy(),agent1.s.copy()))
 
+        agent1_acts.append(u)
+        agent1_obs.append(o)
+
+
+
+    """NOT USED ANYMORE
     if A_learning == True:
         for (o,s) in zip(observationsA, agentselfposA):
             if agent0.agent_id == 0:
@@ -1366,11 +1415,164 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
             if agent1.agent_id == 1:
               agent1.update_A(o,s,who=0)
             else:
-              agent1.update_A(o,s,who=1)
+              agent1.update_A(o,s,who=1)"""
 
+  
     
-    
-    
+
+    if A_learning == True:
+
+        if agent0.agent_id == 0:
+            epochs_observations0["leftworld"].append(agent0_obs)
+            epochs_actions0["leftworld"].append(agent0_acts)
+            A = EM(epochs_observations0["leftworld"],
+                        epochs_actions0["leftworld"],
+                        agent0.B.copy(),
+                        A_param_shape = (11,2,4),
+                        s_param_shape = (2,4),
+                        num_steps = None, gm = None, start = None, end = None)
+                  
+            A_flat = A/np.sum(A, axis = 0)
+
+            A_invstate = np.zeros(A.shape)
+            A_invstate[:,0:4] = A[:,4:8]
+            A_invstate[:,4:8] = A[:,0:4]
+            A_invstate_flat = A_invstate/np.sum(A_invstate, axis = 0)
+            
+            
+            true_A = agent0.true_A[0]
+            true_A_flat = true_A/np.sum(true_A, axis = 0)
+          
+            true_A_flat = np.einsum("ijklo -> ijl", true_A_flat)
+            true_A_flat = true_A_flat.reshape((11,8), order = "C")
+
+            kl_state = A_KL(true_A_flat, A_flat)
+            kl_invstate = A_KL(true_A_flat, A_invstate_flat)
+
+            if kl_invstate < kl_state: #states have not been switched
+                new_A0 = A_invstate
+            else:
+                new_A0 = A
+
+
+            reshapedA0 = np.reshape(new_A0, (11,2,4), order = "C")
+            temp = np.repeat(reshapedA0[:,:,np.newaxis,:], axis = 2, repeats = 2)
+            temp = np.repeat(temp[:,:,:,:,np.newaxis], axis = 4, repeats = 4)
+            agent0.A[0] = temp.copy()
+
+
+
+            epochs_observations1["rightworld"].append(agent1_obs)
+            epochs_actions1["rightworld"].append(agent1_acts)
+            A = EM(epochs_observations1["rightworld"],
+                        epochs_actions1["rightworld"],
+                        agent1.B.copy(),
+                        A_param_shape = (11,2,4),
+                        s_param_shape = (2,4),
+                        num_steps = None, gm = None, start = None, end = None)
+
+            A_flat = A/np.sum(A, axis = 0)
+
+            A_invstate = np.zeros(A.shape)
+            A_invstate[:,0:4] = A[:,4:8]
+            A_invstate[:,4:8] = A[:,0:4]
+            A_invstate_flat = A_invstate/np.sum(A_invstate, axis = 0)
+
+            true_A = agent1.true_A[0]
+            true_A_flat = true_A/np.sum(true_A, axis = 0)
+            true_A_flat = np.einsum("ijklo -> iko", true_A_flat)
+            true_A_flat = true_A_flat.reshape((11,8), order = "C")
+
+            kl_state = A_KL(true_A_flat, A_flat)
+            kl_invstate = A_KL(true_A_flat, A_invstate_flat)
+
+            if kl_invstate < kl_state: #states have not been switched
+                new_A1 = A_invstate
+            else:
+                new_A1 = A
+             
+
+            reshapedA1 = np.reshape(new_A1, (11,2,4), order = "C")
+            temp = np.repeat(reshapedA1[:,np.newaxis,:,:], axis = 1, repeats = 2)
+            temp = np.repeat(temp[:,:,:,np.newaxis,:], axis = 3, repeats = 4)
+            agent1.A[0] = temp.copy()
+
+        else:
+            epochs_observations0["rightworld"].append(agent0_obs)
+            epochs_actions0["rightworld"].append(agent0_acts)
+
+            A = EM(epochs_observations0["rightworld"],
+                        epochs_actions0["rightworld"],
+                        agent0.B.copy(),
+                        A_param_shape = (11,4,2),
+                        s_param_shape = (4,2),
+                        num_steps = None, gm = None, start = None, end = None)
+
+            A_flat = A/np.sum(A, axis = 0)
+
+            A_invstate = np.zeros(A.shape)
+            A_invstate[:,0:4] = A[:,4:8]
+            A_invstate[:,4:8] = A[:,0:4]
+            A_invstate_flat = A_invstate/np.sum(A_invstate, axis = 0)
+
+            true_A = agent0.true_A[1]
+            true_A_flat = true_A/np.sum(true_A, axis = 0)
+            true_A_flat = np.einsum("ijklo -> iko", true_A_flat)
+            print(true_A_flat.shape)
+            true_A_flat = true_A_flat.reshape((11,8), order = "C")
+
+            kl_state = A_KL(true_A_flat, A_flat)
+            kl_invstate = A_KL(true_A_flat, A_invstate_flat)
+
+            if kl_invstate < kl_state: #states have not been switched
+                new_A0 = A_invstate
+            else:
+                new_A0 = A
+                  
+           
+            reshapedA0 = np.reshape(new_A0, (11,2,4), order = "C")
+            temp = np.repeat(reshapedA0[:,np.newaxis,:,:], axis = 1, repeats = 2)
+            temp = np.repeat(temp[:,:,:,np.newaxis,:], axis = 3, repeats = 4)
+            agent0.A[1] = temp.copy()
+
+
+
+            epochs_observations1["leftworld"].append(agent1_obs)
+            epochs_actions1["leftworld"].append(agent1_acts)
+            A = EM(epochs_observations1["leftworld"],
+                        epochs_actions1["leftworld"],
+                        agent1.B.copy(),
+                        A_param_shape = (11,4,2),
+                        s_param_shape = (4,2),
+                        num_steps = None, gm = None, start = None, end = None)
+
+            A_flat = A/np.sum(A, axis = 0)
+
+            A_invstate = np.zeros(A.shape)
+            A_invstate[:,0:4] = A[:,4:8]
+            A_invstate[:,4:8] = A[:,0:4]
+            A_invstate_flat = A_invstate/np.sum(A_invstate, axis = 0)
+
+            true_A = agent1.true_A[1]
+            true_A_flat = true_A/np.sum(true_A, axis = 0)
+            true_A_flat = np.einsum("ijklo -> ijl", true_A_flat)
+            true_A_flat = true_A_flat.reshape((11,8), order = "C")
+
+            kl_state = A_KL(true_A_flat, A_flat)
+            kl_invstate = A_KL(true_A_flat, A_invstate_flat)
+
+            if kl_invstate < kl_state: #states have not been switched
+                new_A1 = A_invstate
+            else:
+                new_A1 = A
+   
+
+            reshapedA1 = np.reshape(new_A1, (11,2,4), order = "C")
+            temp = np.repeat(reshapedA1[:,:,np.newaxis,:], axis = 2, repeats = 2)
+            temp = np.repeat(temp[:,:,:,:,np.newaxis], axis = 4, repeats = 4)
+            agent1.A[1] = temp.copy()
+
+
     epochs_positions.append(positions)
 
     epochs_A_matrices.append((agent0.A.copy(), agent1.A.copy()))
@@ -1378,6 +1580,7 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
     epochs_beliefs.append(beliefs)
 
     epochs_desires.append((agent0.goal_states.copy(),agent1.goal_states.copy()))
+
 
 
     #print(f"At the end of epoch {e}, agent0 A is: {agent0.A}")

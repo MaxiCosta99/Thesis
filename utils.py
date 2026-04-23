@@ -91,7 +91,7 @@ def unnorm_Mstep(inf_states_eps, gm, obs_eps):
     return unnorm_gm
 
 
-def EM(obs_eps, acts_eps, tm_unres, num_steps, gm = None, start = None, end = None):
+def EM(obs_eps, acts_eps, tm_unres, num_steps, A_param_shape, s_param_shape, gm = None, start = None, end = None):
 
     
     tm = np.zeros((tm_unres.shape[0],2*tm_unres.shape[1], 2*tm_unres.shape[2]))
@@ -101,10 +101,12 @@ def EM(obs_eps, acts_eps, tm_unres, num_steps, gm = None, start = None, end = No
                             [np.zeros(tm_unres[i].shape), tm_unres[i]]])
 
     
+
+        
     #np.random.seed(0)
 
     if start is None:
-        start = np.random.beta(10,1,(4,2)) #in case I don't want to use init
+        start = np.random.beta(10,1,s_param_shape) #in case I don't want to use init
         start = start.reshape(-1)
         start = start/np.sum(start)
 
@@ -113,7 +115,7 @@ def EM(obs_eps, acts_eps, tm_unres, num_steps, gm = None, start = None, end = No
 
     
     if end is None:
-        end = np.random.beta(10,1,(4,2)) #in case I don't want to use init
+        end = np.random.beta(10,1,s_param_shape) #in case I don't want to use init
         end = end.reshape(-1)
         end = end/np.sum(end)
 
@@ -122,7 +124,7 @@ def EM(obs_eps, acts_eps, tm_unres, num_steps, gm = None, start = None, end = No
 
     
     if gm is None:
-        gm = np.random.beta(10,1,(5,4,2))
+        gm = np.random.beta(10,1,A_param_shape)
         gm = gm/np.sum(gm, axis = 0, keepdims = True)
         gm_shape = gm.shape
         gm = gm.reshape(gm.shape[0], -1)
@@ -148,9 +150,11 @@ def EM(obs_eps, acts_eps, tm_unres, num_steps, gm = None, start = None, end = No
 
     gm = unnorm_Mstep(inf_states, agent_gm, obs_eps)
 
-    reshaped_gm = np.reshape(gm,gm_shape, order = "F")
+    #reshaped_gm = np.reshape(gm,gm_shape, order = "C")
 
-    return reshaped_gm
+    #print(reshaped_gm.shape)
+
+    return gm
 
 
  
