@@ -1,8 +1,96 @@
 import numpy as np
 import scipy.special as sp
 import matplotlib.pyplot as plt
+import scipy
 
 #np.set_printoptions(precision = 2)
+
+
+def state_switcher(learned_A, true_A, rebuild_order):
+    """
+    learnedA is a dirichlet counts matrix that comes from the EM algorithm so it is of shape (num_obs, -1)
+    true_A is a categorical of shape (num_obs, 2,2,4,4) or (num_obs, 4,2)
+    rebuild order is either "F" or "C" (use "C" when two agent environment, use "F" when single agent)
+        this was a bad design choice, it is what it is
+    """
+    A_norm = learned_A/np.sum(learned_A, axis = 0)
+
+    A_invstate = np.zeros(learned_A.shape)
+    A_invstate[:,0:4] = learned_A[:,4:8]
+    A_invstate[:,4:8] = learned_A[:,0:4]
+    A_invstate_norm = A_invstate/np.sum(A_invstate, axis = 0)
+
+    true_A_res = true_A.reshape(true_A.shape[0], -1, order = rebuild_order) #F for single agent, C for two agent
+    true_A_norm = true_A_res/np.sum(true_A_res, axis = 0)
+
+    kl_state = A_KL(true_A_norm, A_norm)
+    kl_invstate = A_KL(true_A_norm, A_invstate_norm)
+
+    if kl_invstate < kl_state: #states have been switched
+        A = A_invstate.reshape(true_A.shape, order = rebuild_order)
+    else:
+        A = learned_A.reshape(true_A.shape, order = rebuild_order)
+
+    return A
+
+
+def compute_cov_dir(x):
+    x = x.reshape(-1)
+    x_norm = x/np.sum(x)
+    x_norm = x_norm[:,np.newaxis]
+
+    y = (np.diag(x_norm.reshape(-1))-(x_norm @ x_norm.T))/(np.sum(x)+1)
+
+    E = scipy.linalg.eigh(y, eigvals_only = True)
+    
+    assert np.all(E > -1e-8)
+
+    return y
+
+
+def compute_cov_A(A):
+    """
+    A is of shape (num_obs, ...)
+    """
+    
+    A = A.reshape(A.shape[0],-1)
+    
+
+    cov_mat_sum = 0
+
+    for a in A.T:
+        cov_mat = compute_cov_dir(a)
+        cov_mat_sum = cov_mat_sum + cov_mat
+
+    return cov_mat_sum
+
+
+
+def make_goals_single_agent(reward = float, punishment = float, beta = float, type = str):
+  
+    rp = np.exp(reward/beta)
+    pp = np.exp(-punishment/beta)
+    
+    if type == "default":
+
+        goals = np.ones((4,2))
+        goals[2,0] = rp
+        goals[3,1] = rp
+        goals[2,1] = pp
+        goals[3,0] = pp
+        goals = goals/np.sum(goals)
+
+    
+    if type == "obs":
+
+        goals = np.ones((5))
+        goals[2] = rp
+        goals[3] = pp
+        goals = goals/np.sum(goals)
+
+    
+    return goals
+
 
 
 
@@ -91,7 +179,7 @@ def unnorm_Mstep(inf_states_eps, gm, obs_eps):
     return unnorm_gm
 
 
-def EM(obs_eps, acts_eps, tm_unres, num_steps, A_param_shape, s_param_shape, gm = None, start = None, end = None):
+def EM(obs_eps, acts_eps, tm_unres, A_param_shape, s_param_shape, gm = None, start = None, end = None):
 
     
     tm = np.zeros((tm_unres.shape[0],2*tm_unres.shape[1], 2*tm_unres.shape[2]))
@@ -333,21 +421,27 @@ def A_KL(A, learned_A):
     kl = np.where(A != 0, A *np.log(np.divide(A, learned_A)), 0)
     return np.sum(kl)
 
-def A_KL_plotter(true_A, learned_As_eps):
+def A_KL_plotter(true_A, learned_As_eps, best_action_count):
 
     true_A_state = np.reshape(true_A, (5,8), order = "F")
     true_A_invstate = np.zeros(true_A_state.shape)
     true_A_invstate[:,0:4] = true_A_state[:,4:8]
     true_A_invstate[:,4:8] = true_A_state[:,0:4] 
+
     kl_eps = []
     learned_As_eps_end = []
+    var_eps = []
     for learned_As in learned_As_eps:
 
         kl = []
+        var = []
         for A in learned_As:
             kl_state = A_KL(true_A_state, A)
             kl_invstate = A_KL(true_A_invstate, A)
             kl.append(min(kl_state, kl_invstate))
+
+            var.append(np.linalg.norm(compute_cov_A(A)))
+
 
         if kl[-1] == kl_state: #states have not been switched
             learned_As_eps_end.append(A)
@@ -357,6 +451,8 @@ def A_KL_plotter(true_A, learned_As_eps):
             temp[:,4:8] = A[:,0:4]
             learned_As_eps_end.append(temp)
 
+        
+        var_eps.append(var)
         kl_eps.append(kl)
     
     final_As = np.array(learned_As_eps_end)
@@ -367,17 +463,38 @@ def A_KL_plotter(true_A, learned_As_eps):
     assert data.all() >= 0, "KL divergences should be positive"
     mean = np.mean(data, axis = 0)
     std = np.std(data, axis = 0)
+
+    var_data = np.array(var_eps)
+    mean_var = np.mean(var_data, axis = 0)
+    std_var = np.std(var_data, axis = 0)
+
+
     x = np.arange(len(kl))
 
-    plt.figure()
-    plt.plot(x, mean, label = "Mean KL divergence")
-    plt.fill_between(x, mean - std, mean + std, alpha = 0.2, label = "Std Dev")
-    plt.xlabel("Episode")
-    plt.ylabel("KL divergence")
+    fig, ax1 = plt.subplots()
+
+
+    ax1.plot(x, mean, label = "Mean KL divergence")
+    ax1.fill_between(x, mean - std, mean + std, alpha = 0.2, label = "Std Dev")
+    ax1.set_xlabel("Episode")
+    ax1.set_ylabel("KL divergence")
+
+    ax2 = ax1.twinx()
+    ax2.plot(x, mean_var, linestyle="--", label = "Norm of the sum of the covariance matrices")
+    ax2.fill_between(x, mean_var - std_var, mean_var + std_var, alpha = 0.2, label = "Std Dev")
+    ax2.set_ylabel("Covariance norm")
+
+    ax1.plot(x, best_action_count, linestyle=':', label="Best action count")
+
+
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax1.legend(lines1 + lines2, labels1 + labels2)
+
+
     plt.title("KL divergence between true A and learned A over episodes")
     plt.xticks(np.arange(0, len(kl), step = 5), np.arange(0, len(kl), step = 5))
     plt.ylim(0,13)
-    plt.legend()
     plt.show()
 
 

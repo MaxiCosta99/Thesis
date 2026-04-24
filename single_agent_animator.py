@@ -233,7 +233,7 @@ def animate(states, cheeses, A_matrices):
 
     
     for i, state in enumerate(states):
-        print(f"This is the matrix A = {np.round(A_matrices[i],1)}")
+        #print(f"This is the matrix A = {np.round(A_matrices[i],1)}")
         env = EnvState(state, cheese_pos = cheeses[i])
         world_renderer = Renderer(screen, env, env.cheese_pos, CELL_SIZE, ROWS, COLS,
                             GRID_COLOR, ACTIVE_BORDER, AGENT_COLOR,

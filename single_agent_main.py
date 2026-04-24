@@ -1,7 +1,7 @@
 import numpy as np
 from single_agent import agent, pretrain, world, run
 from single_agent_animator import animate
-from utils import A_KL_plotter
+from utils import A_KL_plotter, make_goals_single_agent
 import time
 
 
@@ -51,110 +51,110 @@ true_A[3,3,0] = 1
 true_A[4,0,:] = 1
 
 true_A = true_A/np.sum(true_A, axis = 0, keepdims = True)
-start_A = true_A.copy()
 
-start_B = mdp_B
-
+U = [0,1,2,3]
 
 start_s = np.array([[0.5,0.5],[0,0],[0,0],[0,0]])
 
-reward = 2
-punishment = 10
-
-beta = 1
-rp = np.exp(reward/beta)
-pp = np.exp(-punishment/beta)
 
 
-goals = np.ones(start_s.shape)
-goals[2,0] = rp
-goals[3,1] = rp
-goals[2,1] = pp
-goals[3,0] = pp
-goals = goals/np.sum(goals)
-
-
-goal_obs = np.ones(start_A.shape[0])
-goal_obs[2] = 1e2
-goal_obs[3] = 1e-5
-goal_obs = goal_obs/np.sum(goal_obs)
-
-U = [0,1,2,3]
-reason_depth = 3
-dec_temp = 0.1
-little_o_imaginer = True
-o_imagination_breadth = 2
-o_prob_threshold = 0.1
-
-little_u_imaginer = True
-u_imagination_breadth = 3
-u_prob_threshold = 0.1
-
-bayes_observe = True
-terms = ["risk", "epi_value"]
-
-obs_model_given = False
-infer_before_update_obs_model = False
-
-
-num_eps = 40
-nr_moves = 3
-
-A_update_method = "EM_all_ep"
-EM_steps = None #now until convergence
-random_moves = False
-
-maxi = agent(start_A, start_B, start_s, U = U, goal_states = goals,
-             reason_depth = reason_depth, dec_temp = dec_temp, chatty_boy = 0,
-             little_o_imaginer = little_o_imaginer, o_imagination_breadth = o_imagination_breadth, o_prob_threshold = o_prob_threshold,
-             little_u_imaginer = little_u_imaginer, u_imagination_breadth= u_imagination_breadth, u_prob_threshold = u_prob_threshold,
-             goal_obs = goal_obs, moves_to_go = nr_moves, bayes_observe = bayes_observe, terms = terms,
-             obs_model_given = obs_model_given, infer_before_update_obs_model = infer_before_update_obs_model,
-             update_A_method = A_update_method, EM_steps = EM_steps, random_moves = random_moves)
-
-
-agent_positions, A_matrices, cheeses = run(maxi, num_eps, start_s, reason_depth, nr_moves)
-
-
-
-animate(agent_positions, cheeses, A_matrices)
-
-
-def exp_learning_A():
-    reason_depth = 2
+def default():
+    reason_depth = 3
     dec_temp = 0.1
-    nr_moves = 10
+    little_o_imaginer = True
+    o_prob_threshold = 0.1
+
+    little_u_imaginer = True
+    u_prob_threshold = 0.1
+
+    bayes_observe = True
+    terms = ["risk_obs", "epi_value"]
+
     obs_model_given = False
-    infer_before_update_obs_model = True
+    infer_before_update_obs_model = False
+
+
+    num_eps = 40
+    nr_moves = 3
+
+    A_update_method = "EM_all_ep"
+    random_moves = False
+
+    state_stabilizer = False
+    det_dec_rule = True
+
+    maxi = agent(start_A, start_B, start_s, U = U, goal_states = goals,
+                reason_depth = reason_depth, dec_temp = dec_temp, chatty_boy = 0,
+                little_o_imaginer = little_o_imaginer, o_prob_threshold = o_prob_threshold,
+                little_u_imaginer = little_u_imaginer, u_prob_threshold = u_prob_threshold,
+                goal_obs = goal_obs, moves_to_go = nr_moves, bayes_observe = bayes_observe, terms = terms,
+                obs_model_given = obs_model_given, infer_before_update_obs_model = infer_before_update_obs_model,
+                update_A_method = A_update_method, random_moves = random_moves, state_stabilizer = state_stabilizer, det_dec_rule = det_dec_rule)
+
+
+    #agent_positions, A_matrices, cheeses, epoch_best_act_count = run(maxi, num_eps, start_s, reason_depth, nr_moves)
+
+
+
+
+    #animate(agent_positions, cheeses, A_matrices)
+
+
+
+
+
+
+def learn_obs_model_act():
+    
+    #world parameters
+    B = mdp_B
+    obs_model_given = False
+    nr_moves = 3
+    reward = 2
+    punishment = 6
+    goals = make_goals_single_agent(reward = reward, punishment = punishment, beta = 1, type = "obs")
+
+
+
+    #agent parameters
+    reason_depth = 3
+    dec_temp = 0.1
+    little_o_imaginer = True
+    o_prob_threshold = 0.1
+    little_u_imaginer = True
+    u_prob_threshold = 0.1
     A_update_method = "EM_all_ep" #either "default", "EM_all_ep", "EM_current_ep"
-    EM_steps = 100 #Not used anymore, EM now until convergence
-    num_eps = 30
+    terms = ["risk_obs", "epi value"]
+    infer_before_update_obs_model = True #not needed in this case
+    random_moves = False
+    state_stabilizer = False
+    det_dec_rule = True
+    bayes_observe = True
+
+    
+    
+    
+    num_eps = 50
     num_tries = 1
-    terms = ["nov"]
-    random_moves = True
-
-
 
     diff_tries_A = []
     for i in range(num_tries):
-        maxi = agent(start_A, start_B, start_s, U = U, goal_states = goals,
-                reason_depth = reason_depth, dec_temp = dec_temp, chatty_boy = 0,
-                little_o_imaginer = little_o_imaginer, o_imagination_breadth = o_imagination_breadth, o_prob_threshold = o_prob_threshold,
-                little_u_imaginer = little_u_imaginer, u_imagination_breadth= u_imagination_breadth, u_prob_threshold = u_prob_threshold,
-             goal_obs = goal_obs, moves_to_go = nr_moves, bayes_observe = bayes_observe, terms = terms,
+        maxi = agent(true_A.copy(), B.copy(), start_s.copy(), U = U, goal_states = goals.copy(),
+             reason_depth = reason_depth, dec_temp = dec_temp, chatty_boy = 0,
+             little_o_imaginer = little_o_imaginer, o_prob_threshold = o_prob_threshold,
+             little_u_imaginer = little_u_imaginer, u_prob_threshold = u_prob_threshold,
+             goal_obs = goals.copy(), moves_to_go = nr_moves, bayes_observe = bayes_observe, terms = terms,
              obs_model_given = obs_model_given, infer_before_update_obs_model = infer_before_update_obs_model,
-             update_A_method = A_update_method, EM_steps = EM_steps, random_moves = random_moves)
+             update_A_method = A_update_method, random_moves = random_moves, state_stabilizer = state_stabilizer, det_dec_rule = det_dec_rule)
 
-        agent_positions, A_matrices, cheeses = run(maxi, num_eps, start_s, reason_depth, nr_moves)
+        agent_positions, A_matrices, cheeses, epoch_best_act_count = run(maxi, num_eps, start_s, reason_depth, nr_moves)
 
         diff_tries_A.append(A_matrices)
 
-    #print(f"This is the learned matrix A: \n {np.round(A_matrices[-1],2)}")
-    A_KL_plotter(true_A, diff_tries_A)
+        epoch_best_act_count.append(3)
+
+    A_KL_plotter(true_A, diff_tries_A, epoch_best_act_count)
 
     
-
-
-
-#exp_learning_A()
+learn_obs_model_act()
 

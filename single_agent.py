@@ -1,6 +1,6 @@
 import numpy as np
 import math
-from utils import EM, A_KL
+from utils import EM, A_KL, state_switcher
 
 def softmax(x, beta):
     return np.exp(-x/beta)/np.sum(np.exp(-x/beta))
@@ -26,11 +26,11 @@ def pos_conv(pos):
 class agent:
     def __init__(self, A, B, s, U,
                goal_states, reason_depth = int, dec_temp = float, chatty_boy = bool,
-               little_o_imaginer = bool, o_imagination_breadth = int, o_prob_threshold = float,
-               little_u_imaginer = bool, u_imagination_breadth = int, u_prob_threshold = float,
+               little_o_imaginer = bool, o_prob_threshold = float,
+               little_u_imaginer = bool, u_prob_threshold = float,
                goal_obs = None, moves_to_go = int, bayes_observe = bool, terms = list,
                obs_model_given = bool, infer_before_update_obs_model = bool,
-               update_A_method = str, EM_steps = int, random_moves = bool):
+               update_A_method = str, random_moves = bool, state_stabilizer = bool, det_dec_rule = bool):
         if obs_model_given == True:
             self.A = A.copy()
         else:
@@ -44,9 +44,7 @@ class agent:
         self.chatty_boy = chatty_boy
         self.dec_temp = dec_temp
         self.little_o_imaginer = little_o_imaginer
-        self.o_imagination_breadth = o_imagination_breadth
         self.little_u_imaginer = little_u_imaginer
-        self.u_imagination_breadth = u_imagination_breadth
         self.u_prob_threshold = u_prob_threshold
         self.o_prob_threshold = o_prob_threshold
         self.goal_obs = goal_obs
@@ -57,9 +55,13 @@ class agent:
         self.infer_before_update_obs_model = infer_before_update_obs_model
 
         self.update_A_method = update_A_method
-        self.EM_steps = EM_steps
         self.random_moves = random_moves
+        self.state_stabilizer = state_stabilizer
+
         self.true_A = A.copy()
+
+        self.det_dec_rule = det_dec_rule
+
 
 
     def update_A(self, ep_observations, ep_states, ep_actions):
@@ -74,30 +76,17 @@ class agent:
                 self.A[o,:] = self.A[o,:] + self.s
         
         if self.update_A_method == "EM_all_ep":
-            A = EM(ep_observations, ep_actions, self.B.copy(), num_steps = self.EM_steps, A_param_shape = (5,2,4), s_param_shape = (2,4), gm = None, start = None, end = None)
+            A = EM(obs_eps = ep_observations, acts_eps = ep_actions, tm_unres = self.B.copy(), A_param_shape = (5,2,4), s_param_shape = (2,4), gm = None, start = None, end = None)
 
         if self.update_A_method == "EM_current_ep":
-            A = EM(ep_observations[-1:], ep_actions[-1:], self.B.copy(), num_steps = self.EM_steps, A_param_shape = self.A.shape, s_param_shape = self.s.shape, gm = self.A.copy(), start = None, end = None)
+            A = EM(obs_eps = ep_observations[-1:], acts_eps = ep_actions[-1:], tm_unres = self.B.copy(), A_param_shape = self.A.shape, s_param_shape = self.s.shape, gm = self.A.copy(), start = None, end = None)
 
         #THIS PART IS FOR ADJUST STATE SWITCHING
-        A_flat = A/np.sum(A, axis = 0)
-
-        A_invstate = np.zeros(A.shape)
-        A_invstate[:,0:4] = A[:,4:8]
-        A_invstate[:,4:8] = A[:,0:4]
-        A_invstate_flat = A_invstate/np.sum(A_invstate, axis = 0)
-
-        true_A = self.true_A.copy()
-        true_A = true_A.reshape((5,8), order = "F")
-        true_A_flat = true_A/np.sum(true_A, axis = 0)
-
-        kl_state = A_KL(true_A_flat, A_flat)
-        kl_invstate = A_KL(true_A_flat, A_invstate_flat)
-
-        if kl_invstate < kl_state: #states have been switched
-            self.A = A_invstate.reshape((5,4,2), order = "F")
+        if self.state_stabilizer == True:
+            self.A = state_switcher(learned_A = A, true_A = self.true_A.copy(), rebuild_order = "F").copy()
         else:
-            self.A = A.reshape((5,4,2), order = "F")
+            A = np.reshape(A, self.true_A.shape, "F")
+            self.A = A.copy()
 
 
         assert self.obs_model_given == False, f"The obs model is given, can't update it"
@@ -428,6 +417,7 @@ class agent:
       
       if self.random_moves == True:
           action = np.random.choice(self.U)
+
           
       else:
           u_imagined, Hu = self.SFE()
@@ -437,7 +427,11 @@ class agent:
 
           pu = softmax(Hu, self.dec_temp)
 
-          action = np.random.choice(u_imagined, p = pu)
+          if self.det_dec_rule == True:
+              action = u_imagined[np.argmin(Hu)]
+          
+          else:
+              action = np.random.choice(u_imagined, p = pu)
 
           #print(f"This is the real action taken: {action}")
 
@@ -522,14 +516,25 @@ def run(me = agent, num_eps = int, start_beliefs = np.ndarray, reason_depth = in
     epoch_acts = []
     epoch_obs = []
     epoch_states = []
+    epoch_best_act_count = []
     A_matrices = []
     A_matrices.append(me.A.reshape(me.A.shape[0], -1, order = "F").copy())
-
-        
     
+
+    true_best_acts = np.zeros((num_eps, 3))
+    true_best_acts[:,0] = 0
+    true_best_acts[:,1] = 1
+
     cheeses = []
     for i in range(num_eps):
-        cheeses.append(np.random.choice([0,1]))
+        cheese_pos = np.random.choice([0,1])
+        cheeses.append(cheese_pos)
+        if cheese_pos == 0:
+            true_best_acts[i,2] = 2
+        else:
+            true_best_acts[i,2] = 3
+        
+
 
 
     for e in range(num_eps):
@@ -546,7 +551,10 @@ def run(me = agent, num_eps = int, start_beliefs = np.ndarray, reason_depth = in
         acts = []
 
 
-        for _ in range(nr_moves):
+        best_act_counter = 0
+
+
+        for i in range(nr_moves):
             u = me.pick_action()
             me.act(u)
 
@@ -561,6 +569,10 @@ def run(me = agent, num_eps = int, start_beliefs = np.ndarray, reason_depth = in
             positions.append(pos_conv(w.true_s))
             acts.append(u)
             observations.append(o)
+            
+            if true_best_acts[e,i] == u:
+                best_act_counter = best_act_counter + 1
+
 
         
 
@@ -568,6 +580,7 @@ def run(me = agent, num_eps = int, start_beliefs = np.ndarray, reason_depth = in
         epoch_obs.append(observations)
         epoch_acts.append(acts)
         epoch_states.append(states)
+        epoch_best_act_count.append(best_act_counter)
 
 
 
@@ -583,7 +596,7 @@ def run(me = agent, num_eps = int, start_beliefs = np.ndarray, reason_depth = in
         A_matrices.append(tempA)
 
 
-    return epoch_positions, A_matrices, cheeses
+    return epoch_positions, A_matrices, cheeses, epoch_best_act_count
 
 
 if __name__ == "__main__":
