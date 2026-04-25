@@ -30,7 +30,8 @@ class agent:
                little_u_imaginer = bool, u_prob_threshold = float,
                goal_obs = None, moves_to_go = int, bayes_observe = bool, terms = list,
                obs_model_given = bool, infer_before_update_obs_model = bool,
-               update_A_method = str, random_moves = bool, state_stabilizer = bool, det_dec_rule = bool):
+               update_A_method = str, random_moves = bool, state_stabilizer = bool, det_dec_rule = bool,
+               EM_inits = dict):
         if obs_model_given == True:
             self.A = A.copy()
         else:
@@ -62,6 +63,10 @@ class agent:
 
         self.det_dec_rule = det_dec_rule
 
+        self.samples = 0 #use this to find the best initialization for the EM
+        self.KL_prev_best_init = 10000
+        self.EM_inits = EM_inits
+
 
 
     def update_A(self, ep_observations, ep_states, ep_actions):
@@ -76,14 +81,29 @@ class agent:
                 self.A[o,:] = self.A[o,:] + self.s
         
         if self.update_A_method == "EM_all_ep":
-            A = EM(obs_eps = ep_observations, acts_eps = ep_actions, tm_unres = self.B.copy(), A_param_shape = (5,2,4), s_param_shape = (2,4), gm = None, start = None, end = None)
+            A, samples = EM(obs_eps = ep_observations, acts_eps = ep_actions, tm_unres = self.B.copy(), A_param_shape = (5,2,4), s_param_shape = (2,4), gm = self.EM_inits["gm"], start = self.EM_inits["start"], end = self.EM_inits["end"])
+         
 
         if self.update_A_method == "EM_current_ep":
-            A = EM(obs_eps = ep_observations[-1:], acts_eps = ep_actions[-1:], tm_unres = self.B.copy(), A_param_shape = self.A.shape, s_param_shape = self.s.shape, gm = self.A.copy(), start = None, end = None)
+            A, samples = EM(obs_eps = ep_observations[-1:], acts_eps = ep_actions[-1:], tm_unres = self.B.copy(), A_param_shape = self.A.shape, s_param_shape = self.s.shape, gm = self.A.copy(), start = None, end = None)
+         
+
+        #this is used in calls to learn optimal inits for the EM
+        ttA = self.true_A.copy()
+        ttA = ttA.reshape(ttA.shape[0], -1, order = "F")
+
+        tA = A/np.sum(A, axis = 0)
+        init_kl = A_KL(ttA, tA)
+        if init_kl < self.KL_prev_best_init:
+            self.KL_prev_best_init = init_kl
+            self.samples = samples
+            print("I saved the inits!!!")
+
 
         #THIS PART IS FOR ADJUST STATE SWITCHING
         if self.state_stabilizer == True:
             self.A = state_switcher(learned_A = A, true_A = self.true_A.copy(), rebuild_order = "F").copy()
+
         else:
             A = np.reshape(A, self.true_A.shape, "F")
             self.A = A.copy()
@@ -91,6 +111,7 @@ class agent:
 
         assert self.obs_model_given == False, f"The obs model is given, can't update it"
         assert self.A.shape == old_A_shape, f"The shape of A changed from {old_A_shape} to {self.A.shape} after updating, something is wrong"
+
 
 
     def observe(self, o):
@@ -422,7 +443,7 @@ class agent:
       else:
           u_imagined, Hu = self.SFE()
 
-          #print(f"These are the actions imagined {u_imagined} \n With their EFE's: {Hu}")
+          print(f"These are the actions imagined {u_imagined} \n With their EFE's: {Hu}")
 
 
           pu = softmax(Hu, self.dec_temp)
@@ -433,7 +454,7 @@ class agent:
           else:
               action = np.random.choice(u_imagined, p = pu)
 
-          #print(f"This is the real action taken: {action}")
+          print(f"This is the real action taken: {action}")
 
 
 
@@ -521,7 +542,7 @@ def run(me = agent, num_eps = int, start_beliefs = np.ndarray, reason_depth = in
     A_matrices.append(me.A.reshape(me.A.shape[0], -1, order = "F").copy())
     
 
-    true_best_acts = np.zeros((num_eps, 3))
+    true_best_acts = np.zeros((num_eps, nr_moves))
     true_best_acts[:,0] = 0
     true_best_acts[:,1] = 1
 

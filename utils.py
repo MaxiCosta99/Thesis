@@ -66,12 +66,12 @@ def compute_cov_A(A):
 
 
 
-def make_goals_single_agent(reward = float, punishment = float, beta = float, type = str):
+def make_goals_single_agent(reward = float, punishment = float, beta = float, goal_type = str):
   
     rp = np.exp(reward/beta)
     pp = np.exp(-punishment/beta)
     
-    if type == "default":
+    if goal_type == "default":
 
         goals = np.ones((4,2))
         goals[2,0] = rp
@@ -81,7 +81,8 @@ def make_goals_single_agent(reward = float, punishment = float, beta = float, ty
         goals = goals/np.sum(goals)
 
     
-    if type == "obs":
+    
+    if goal_type == "obs":
 
         goals = np.ones((5))
         goals[2] = rp
@@ -91,6 +92,77 @@ def make_goals_single_agent(reward = float, punishment = float, beta = float, ty
     
     return goals
 
+
+def make_goals_two_agent(reward = float, punishment = float, beta = float, goal_type = str, uncertain_goals = bool):
+    rp = np.exp(reward/beta)
+    pp = np.exp(-punishment/beta)
+
+    
+    if goal_type == "default":
+        agent0_goals = np.ones((2,2,4,4))
+        agent0_goals[0,:,2,:] = rp
+        agent0_goals[1,:,3,:] = rp
+        agent0_goals[0,:,3,:] = pp
+        agent0_goals[1,:,2,:] = pp
+        agent0_goals = agent0_goals/pp
+        agent0_goals_cat = agent0_goals/np.sum(agent0_goals)
+
+        agent1_goals = np.ones((2,2,4,4))
+        agent1_goals[:,0,:,2] = rp
+        agent1_goals[:,1,:,3] = rp
+        agent1_goals[:,0,:,3] = pp
+        agent1_goals[:,1,:,2] = pp
+        agent1_goals = agent1_goals/pp
+        agent1_goals_cat = agent1_goals/np.sum(agent1_goals)
+
+        assert(np.min(agent0_goals) == 1)
+        assert(np.min(agent1_goals) == 1)
+
+        
+        agent0_fullgoals = [agent0_goals_cat, agent1_goals]
+        agent1_fullgoals = [agent1_goals_cat, agent0_goals]
+
+
+        if uncertain_goals == True:
+            uncertain_goals = np.ones((2,2,4,4))
+            agent0_fullgoals[1] = uncertain_goals
+            agent1_fullgoals[1] = uncertain_goals
+
+        
+    elif goal_type == "obs":
+
+        agent0_goal_obs = np.ones(11)
+        agent0_goal_obs[2] = rp
+        agent0_goal_obs[3] = pp
+        agent0_goal_obs = agent0_goal_obs/pp
+        agent0_goal_obs_cat = agent0_goal_obs/np.sum(agent0_goal_obs)
+
+        agent1_goal_obs = np.ones(11)
+        agent1_goal_obs[7] = rp
+        agent1_goal_obs[8] = pp
+        agent1_goal_obs = agent1_goal_obs/pp
+        agent1_goal_obs_cat = agent1_goal_obs/np.sum(agent1_goal_obs)
+
+        
+        assert(np.min(agent0_goal_obs) == 1)
+        assert(np.min(agent1_goal_obs) == 1)
+        
+        
+        agent0_fullgoals = [agent0_goal_obs_cat, agent1_goal_obs]
+        agent1_fullgoals = [agent1_goal_obs_cat, agent0_goal_obs]
+
+        if uncertain_goals == True:
+            uncertain_goals = np.ones(11)
+            agent0_fullgoals[1] = uncertain_goals
+            agent1_fullgoals[1] = uncertain_goals
+
+    
+    else:
+        assert 1/0, "Goal type not correctly specified fella"
+
+
+    return agent0_fullgoals, agent1_fullgoals
+    
 
 
 
@@ -123,7 +195,6 @@ def Estep(obs_eps, acts_eps, start, end, tm, gm):
     num_eps = len(obs_eps)
     num_visits = len(obs_eps[0])+1
     num_states = gm.shape[1]
-
     
     inf_states_eps = np.zeros((num_eps, num_visits, num_states))
 
@@ -194,30 +265,47 @@ def EM(obs_eps, acts_eps, tm_unres, A_param_shape, s_param_shape, gm = None, sta
     #np.random.seed(0)
 
     if start is None:
-        start = np.random.beta(10,1,s_param_shape) #in case I don't want to use init
-        start = start.reshape(-1)
+        start_sample = np.random.beta(10,1,s_param_shape) #in case I don't want to use init
+        start = start_sample.reshape(-1)
         start = start/np.sum(start)
 
     else:
+        start_sample = start
         start = start.reshape(-1)
 
     
     if end is None:
-        end = np.random.beta(10,1,s_param_shape) #in case I don't want to use init
-        end = end.reshape(-1)
+        end_sample = np.random.beta(10,1,s_param_shape) #in case I don't want to use init
+        end = end_sample.reshape(-1)
         end = end/np.sum(end)
 
     else:
+        end_sample = end
         end = end.reshape(-1)
 
     
     if gm is None:
-        gm = np.random.beta(10,1,A_param_shape)
-        gm = gm/np.sum(gm, axis = 0, keepdims = True)
+        
+        """
+        num_params = A_param_shape[0]
+        num_states = np.prod(A_param_shape[1:])
+
+        gm = np.zeros((num_params, num_states))
+
+        alphas = np.ones(num_params)*2
+
+        for i in range(num_states):
+            gm[:,i] = np.random.dirichlet(alphas)"""
+
+        gm_sample = np.random.beta(10,1, A_param_shape)
+        gm = gm_sample/np.sum(gm_sample, axis = 0, keepdims = True)
+
+        assert np.allclose(np.sum(gm, axis = 0),1)
         gm_shape = gm.shape
         gm = gm.reshape(gm.shape[0], -1)
 
     else:
+        gm_sample = gm
         gm = gm
         gm = gm/np.sum(gm, axis = 0, keepdims = True)
         gm_shape = gm.shape
@@ -242,7 +330,7 @@ def EM(obs_eps, acts_eps, tm_unres, A_param_shape, s_param_shape, gm = None, sta
 
     #print(reshaped_gm.shape)
 
-    return gm
+    return gm, [start_sample, end_sample, gm_sample]
 
 
  
@@ -418,8 +506,15 @@ def logl_action(a, agent, sampled_goal):
 
 
 def A_KL(A, learned_A):
+    """
+    A = (num_obs, -1)
+    learned_A = (num_obs, -1)
+    """
+
     kl = np.where(A != 0, A *np.log(np.divide(A, learned_A)), 0)
     return np.sum(kl)
+
+
 
 def A_KL_plotter(true_A, learned_As_eps, best_action_count):
 

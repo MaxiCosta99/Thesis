@@ -1,5 +1,5 @@
 import numpy as np
-from utils import EM, dir_VI, A_KL
+from utils import EM, dir_VI, A_KL, state_switcher
 
 def softmax(x, beta = 1):
   return np.exp(-x/beta)/np.sum(np.exp(-x/beta))
@@ -29,12 +29,12 @@ def pos_conv(pos):
 class agent:
   def __init__(self, A, B, s, U,
                goal_states, goal_obs, reason_depth = int, dec_temp = float, chatty_boy = bool,
-               little_o_imaginer = bool, o_imagination_breadth = int, o_prob_threshold = float,
-               little_u_imaginer = bool, u_imagination_breadth = int, u_prob_threshold = float,
+               little_o_imaginer = bool, o_prob_threshold = float,
+               little_u_imaginer = bool, u_prob_threshold = float,
                agent_id = int, moves_to_go = int, social = bool, terms = list, sampling = str,
                branch_reductor = str, mc_samples = int, selfish = bool, empathetic = bool,
                bayes_observe = bool, obs_model_given = bool, futuro_prosperoso = bool,
-               random_action = bool):
+               random_action = bool, det_dec_rule = bool, state_stabilizer = bool):
     if  obs_model_given == True:
         self.A = A
     else:
@@ -51,10 +51,8 @@ class agent:
     self.chatty_boy = chatty_boy
     self.dec_temp = dec_temp
     self.little_o_imaginer = little_o_imaginer
-    self.o_imagination_breadth = o_imagination_breadth
     self.o_prob_threshold = o_prob_threshold
     self.little_u_imaginer = little_u_imaginer
-    self.u_imagination_breadth = u_imagination_breadth
     self.u_prob_threshold = u_prob_threshold
 
 
@@ -77,8 +75,11 @@ class agent:
     self.futuro_prosperoso = futuro_prosperoso
 
     self.random_action = random_action
+    self.det_dec_rule = det_dec_rule
 
     self.true_A = A
+
+    self.state_stabilizer = state_stabilizer
 
 
 
@@ -1024,28 +1025,27 @@ class agent:
   def pick_action(self):
       
       if self.random_action == False:
-          u_imagined, H = self.SFE_call_self()
-          uprobs = softmax(H, self.dec_temp)
-          action = np.random.choice(u_imagined, p = uprobs)
 
+          u_imagined, H = self.SFE_call_self()
           print(f"These are the actions considered by agent {self.agent_id} with their dec_temp 1 probs {u_imagined}, {np.round(softmax(H,1),2)}")
-      
           assert len(u_imagined) > 0, "No action imagined"
+
+          if self.det_dec_rule == True:
+
+              action = u_imagined[np.argmin(H)]
+      
+          else:
+              uprobs = softmax(H, self.dec_temp)
+              action = np.random.choice(u_imagined, p = uprobs)
+
       
       else:
           action = np.random.choice(self.U)
 
     
-
       self.moves_to_go = self.moves_to_go - 1
       self.change_reason_depth()
 
-      #print(f"This is the current belief state of agent {self.agent_id}: {np.einsum("ijkl -> jl", self.s[0].copy())}")
-      #print(f"These are the actions considered by agent {self.agent_id} with their probability {u_imagined}, {np.round(uprobs,2)}")
-      #print(f"These are the actions considered by agent {self.agent_id} with their SFE {u_imagined}, {np.round(H,2)}")
-      #print(f"This is the real action taken by agent {self.agent_id}: {action}")
-
-      
       return action
   
   def explore(self):
@@ -1225,17 +1225,17 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
   epochs_beliefs = []
   epochs_desires = []
   
-  epochs_observations0 = {"leftworld": [], #leftworld is the proper agent0 env
-                          "rightworld": []} #rightworld is the world of agent1
+  epochs_observations0 = {"lw": [], #leftworld is the proper agent0 env
+                          "rw": []} #rightworld is the world of agent1
 
-  epochs_observations1 = {"leftworld": [],
-                          "rightworld": []}
+  epochs_observations1 = {"lw": [],
+                          "rw": []}
 
-  epochs_actions0 = {"leftworld": [],
-                      "rightworld": []}
+  epochs_actions0 = {"lw": [],
+                      "rw": []}
 
-  epochs_actions1 = {"leftworld": [],
-                      "rightworld": []}
+  epochs_actions1 = {"lw": [],
+                      "rw": []}
   
 
   epochs_A_matrices.append((agent0.A.copy(), agent1.A.copy()))
@@ -1250,6 +1250,7 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
     print("__________________________________")
     print("Starting epoch: " + str(e))
     print("__________________________________")
+
 
     if exploration_phase == True:
         where_are_you = np.random.randint(0,2)
@@ -1308,6 +1309,8 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
         
         agent0_acts.append(u)
         agent0_obs.append(o)
+        
+
 
 
 
@@ -1417,161 +1420,101 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
             else:
               agent1.update_A(o,s,who=1)"""
 
-  
     
-
     if A_learning == True:
-
         if agent0.agent_id == 0:
-            epochs_observations0["leftworld"].append(agent0_obs)
-            epochs_actions0["leftworld"].append(agent0_acts)
-            A = EM(epochs_observations0["leftworld"],
-                        epochs_actions0["leftworld"],
+            epochs_observations0["lw"].append(agent0_obs)
+            epochs_actions0["lw"].append(agent0_acts)
+                
+            A = EM(epochs_observations0["lw"],
+                        epochs_actions0["lw"],
                         agent0.B.copy(),
                         A_param_shape = (11,2,4),
                         s_param_shape = (2,4),
-                        num_steps = None, gm = None, start = None, end = None)
-                  
-            A_flat = A/np.sum(A, axis = 0)
+                        gm = None, start = None, end = None)
 
-            A_invstate = np.zeros(A.shape)
-            A_invstate[:,0:4] = A[:,4:8]
-            A_invstate[:,4:8] = A[:,0:4]
-            A_invstate_flat = A_invstate/np.sum(A_invstate, axis = 0)
-            
-            
-            true_A = agent0.true_A[0]
-            true_A_flat = true_A/np.sum(true_A, axis = 0)
-          
-            true_A_flat = np.einsum("ijklo -> ijl", true_A_flat)
-            true_A_flat = true_A_flat.reshape((11,8), order = "C")
+            true_A = np.einsum("ijklo -> ijl", agent0.true_A[0].copy())
 
-            kl_state = A_KL(true_A_flat, A_flat)
-            kl_invstate = A_KL(true_A_flat, A_invstate_flat)
-
-            if kl_invstate < kl_state: #states have not been switched
-                new_A0 = A_invstate
+            if agent0.state_stabilizer == True:
+                A = state_switcher(learned_A = A, true_A = true_A, rebuild_order = "C")
             else:
-                new_A0 = A
-
-
-            reshapedA0 = np.reshape(new_A0, (11,2,4), order = "C")
-            temp = np.repeat(reshapedA0[:,:,np.newaxis,:], axis = 2, repeats = 2)
-            temp = np.repeat(temp[:,:,:,:,np.newaxis], axis = 4, repeats = 4)
+                A = np.reshape(A, true_A.shape, order = "C")
+    
+            
+            temp = np.repeat(A[:,:,np.newaxis,:,np.newaxis], axis = 2, repeats = 2)
+            temp = np.repeat(temp, axis = 4, repeats = 4)/8 #need to do this to keep dirichlet count proper
             agent0.A[0] = temp.copy()
 
 
-
-            epochs_observations1["rightworld"].append(agent1_obs)
-            epochs_actions1["rightworld"].append(agent1_acts)
-            A = EM(epochs_observations1["rightworld"],
-                        epochs_actions1["rightworld"],
+            epochs_observations1["rw"].append(agent1_obs)
+            epochs_actions1["rw"].append(agent1_acts)
+            A = EM(epochs_observations1["rw"],
+                        epochs_actions1["rw"],
                         agent1.B.copy(),
                         A_param_shape = (11,2,4),
                         s_param_shape = (2,4),
-                        num_steps = None, gm = None, start = None, end = None)
+                        gm = None, start = None, end = None)
 
-            A_flat = A/np.sum(A, axis = 0)
+            true_A = np.einsum("ijklo -> iko", agent1.true_A[0].copy())
 
-            A_invstate = np.zeros(A.shape)
-            A_invstate[:,0:4] = A[:,4:8]
-            A_invstate[:,4:8] = A[:,0:4]
-            A_invstate_flat = A_invstate/np.sum(A_invstate, axis = 0)
-
-            true_A = agent1.true_A[0]
-            true_A_flat = true_A/np.sum(true_A, axis = 0)
-            true_A_flat = np.einsum("ijklo -> iko", true_A_flat)
-            true_A_flat = true_A_flat.reshape((11,8), order = "C")
-
-            kl_state = A_KL(true_A_flat, A_flat)
-            kl_invstate = A_KL(true_A_flat, A_invstate_flat)
-
-            if kl_invstate < kl_state: #states have not been switched
-                new_A1 = A_invstate
+            if agent1.state_stabilizer == True:
+                A = state_switcher(learned_A = A, true_A = true_A, rebuild_order = "C")
             else:
-                new_A1 = A
-             
+                A = np.reshape(A, true_A.shape, order = "C")
 
-            reshapedA1 = np.reshape(new_A1, (11,2,4), order = "C")
-            temp = np.repeat(reshapedA1[:,np.newaxis,:,:], axis = 1, repeats = 2)
-            temp = np.repeat(temp[:,:,:,np.newaxis,:], axis = 3, repeats = 4)
+            
+            temp = np.repeat(A[:,np.newaxis,:,np.newaxis,:], axis = 1, repeats = 2)
+            temp = np.repeat(temp, axis = 3, repeats = 4)/8 #need to do this to keep dirichlet count proper
             agent1.A[0] = temp.copy()
 
-        else:
-            epochs_observations0["rightworld"].append(agent0_obs)
-            epochs_actions0["rightworld"].append(agent0_acts)
 
-            A = EM(epochs_observations0["rightworld"],
-                        epochs_actions0["rightworld"],
+        else:
+            epochs_observations0["rw"].append(agent0_obs)
+            epochs_actions0["rw"].append(agent0_acts)
+
+            A = EM(epochs_observations0["rw"],
+                        epochs_actions0["rw"],
                         agent0.B.copy(),
                         A_param_shape = (11,4,2),
                         s_param_shape = (4,2),
-                        num_steps = None, gm = None, start = None, end = None)
+                        gm = None, start = None, end = None)
 
-            A_flat = A/np.sum(A, axis = 0)
+            true_A = np.einsum("ijklo -> iko", agent0.true_A[1].copy())
 
-            A_invstate = np.zeros(A.shape)
-            A_invstate[:,0:4] = A[:,4:8]
-            A_invstate[:,4:8] = A[:,0:4]
-            A_invstate_flat = A_invstate/np.sum(A_invstate, axis = 0)
-
-            true_A = agent0.true_A[1]
-            true_A_flat = true_A/np.sum(true_A, axis = 0)
-            true_A_flat = np.einsum("ijklo -> iko", true_A_flat)
-            print(true_A_flat.shape)
-            true_A_flat = true_A_flat.reshape((11,8), order = "C")
-
-            kl_state = A_KL(true_A_flat, A_flat)
-            kl_invstate = A_KL(true_A_flat, A_invstate_flat)
-
-            if kl_invstate < kl_state: #states have not been switched
-                new_A0 = A_invstate
+            if agent0.state_stabilizer == True:
+                A = state_switcher(learned_A = A, true_A = true_A, rebuild_order = "C")
             else:
-                new_A0 = A
-                  
-           
-            reshapedA0 = np.reshape(new_A0, (11,2,4), order = "C")
-            temp = np.repeat(reshapedA0[:,np.newaxis,:,:], axis = 1, repeats = 2)
-            temp = np.repeat(temp[:,:,:,np.newaxis,:], axis = 3, repeats = 4)
+                A = np.reshape(A, true_A.shape, order = "C")
+            
+            temp = np.repeat(A[:,np.newaxis,:,np.newaxis,:], axis = 1, repeats = 2)
+            temp = np.repeat(temp, axis = 3, repeats = 4)/8 #need to do this to keep dirichlet count proper
             agent0.A[1] = temp.copy()
 
 
 
-            epochs_observations1["leftworld"].append(agent1_obs)
-            epochs_actions1["leftworld"].append(agent1_acts)
-            A = EM(epochs_observations1["leftworld"],
-                        epochs_actions1["leftworld"],
+            epochs_observations1["lw"].append(agent1_obs)
+            epochs_actions1["lw"].append(agent1_acts)
+            A = EM(epochs_observations1["lw"],
+                        epochs_actions1["lw"],
                         agent1.B.copy(),
                         A_param_shape = (11,4,2),
                         s_param_shape = (4,2),
-                        num_steps = None, gm = None, start = None, end = None)
+                        gm = None, start = None, end = None)
+            
+            true_A = np.einsum("ijklo -> ijl", agent1.true_A[1].copy())
 
-            A_flat = A/np.sum(A, axis = 0)
-
-            A_invstate = np.zeros(A.shape)
-            A_invstate[:,0:4] = A[:,4:8]
-            A_invstate[:,4:8] = A[:,0:4]
-            A_invstate_flat = A_invstate/np.sum(A_invstate, axis = 0)
-
-            true_A = agent1.true_A[1]
-            true_A_flat = true_A/np.sum(true_A, axis = 0)
-            true_A_flat = np.einsum("ijklo -> ijl", true_A_flat)
-            true_A_flat = true_A_flat.reshape((11,8), order = "C")
-
-            kl_state = A_KL(true_A_flat, A_flat)
-            kl_invstate = A_KL(true_A_flat, A_invstate_flat)
-
-            if kl_invstate < kl_state: #states have not been switched
-                new_A1 = A_invstate
+            if agent1.state_stabilizer == True:
+                A = state_switcher(learned_A = A, true_A = true_A, rebuild_order = "C")
             else:
-                new_A1 = A
-   
-
-            reshapedA1 = np.reshape(new_A1, (11,2,4), order = "C")
-            temp = np.repeat(reshapedA1[:,:,np.newaxis,:], axis = 2, repeats = 2)
-            temp = np.repeat(temp[:,:,:,:,np.newaxis], axis = 4, repeats = 4)
+                A = np.reshape(A, true_A.shape, order = "C")
+            
+            temp = np.repeat(A[:,:,np.newaxis,:,np.newaxis], axis = 2, repeats = 2)
+            temp = np.repeat(temp, axis = 4, repeats = 4)/8 #need to do this to keep dirichlet count proper
             agent1.A[1] = temp.copy()
 
+
+
+  
 
     epochs_positions.append(positions)
 
