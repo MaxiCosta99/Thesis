@@ -72,14 +72,14 @@ u_prob_threshold = 0.1
 def default():
 
         #world params
-        B = mdp_B
+        B = det_B
         reward = 2 #for mdp_B I need 3, for det_B I need 2
         punishment = 7 #for mdp_B i need 8, for det_B I need 5
         beta = 1
         goal_type = "default"
         uncertain_goals = False
         agent0_goals, agent1_goals = make_goals_two_agent(reward = reward, punishment = punishment, beta = beta, goal_type = goal_type, uncertain_goals = uncertain_goals)
-        nr_moves = 3
+        nr_moves = 10
         obs_model_given = False #I am sorry for this
         A_learning = not obs_model_given
         exploration = False
@@ -107,8 +107,8 @@ def default():
         empathetic0 = False #to learn goals of other
         empathetic1 = False #to learn goals of ohter
 
-        random_action1 = False
-        random_action2 = False
+        random_action1 = True
+        random_action2 = True
 
         det_dec_rule0 = False
         det_dec_rule1 = False

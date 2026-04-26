@@ -2,10 +2,8 @@ import numpy as np
 import scipy
 
 
-test = (2,3,4)
+i = 0
 
-print(np.prod(test))
+i =+ 5
 
-x =np.load('inits/sa_end.npy')
-
-print(x)
+print(i)

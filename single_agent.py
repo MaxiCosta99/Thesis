@@ -30,12 +30,12 @@ class agent:
                little_u_imaginer = bool, u_prob_threshold = float,
                goal_obs = None, moves_to_go = int, bayes_observe = bool, terms = list,
                obs_model_given = bool, infer_before_update_obs_model = bool,
-               update_A_method = str, random_moves = bool, state_stabilizer = bool, det_dec_rule = bool,
+               update_A_method = str, state_stabilizer = bool,
                EM_inits = dict):
         if obs_model_given == True:
             self.A = A.copy()
         else:
-            self.A = np.random.beta(10,1,(5,4,2)).copy()
+            self.A = np.random.beta(10,1,(5,2,4)).copy()
             #self.A = np.random.uniform(0,1,(5,4,2)).copy()
         self.s = s
         self.B = B
@@ -56,18 +56,36 @@ class agent:
         self.infer_before_update_obs_model = infer_before_update_obs_model
 
         self.update_A_method = update_A_method
-        self.random_moves = random_moves
+
         self.state_stabilizer = state_stabilizer
 
         self.true_A = A.copy()
-
-        self.det_dec_rule = det_dec_rule
 
         self.samples = 0 #use this to find the best initialization for the EM
         self.KL_prev_best_init = 10000
         self.EM_inits = EM_inits
 
+        if len(self.terms) == 0:
+            self.random_moves = True
+        else:
+            self.random_moves = False
 
+        if self.dec_temp == 0:
+            self.det_dec_rule = True
+        else:
+            self.det_dec_rule = False
+
+        implemented_terms = ["risk", "risk_obs", "nov", "epi_value", "abg"]
+        for term in self.terms:
+            assert term in implemented_terms, f"{term} is not in the implemented list of: {implemented_terms}"
+
+        
+        A_update_methods = ["default", "EM_all_ep", "EM_current_ep"]
+        assert self.update_A_method in A_update_methods, f"{self.update_A_method} is not in the implemented list of methods: {A_update_methods}"
+
+        assert self.reason_depth >= 1, f"My man you want to do zero thinking?"
+
+        assert self.moves_to_go >= 1, f"You can always move"
 
     def update_A(self, ep_observations, ep_states, ep_actions):
 
@@ -88,24 +106,25 @@ class agent:
             A, samples = EM(obs_eps = ep_observations[-1:], acts_eps = ep_actions[-1:], tm_unres = self.B.copy(), A_param_shape = self.A.shape, s_param_shape = self.s.shape, gm = self.A.copy(), start = None, end = None)
          
 
+        """
         #this is used in calls to learn optimal inits for the EM
         ttA = self.true_A.copy()
-        ttA = ttA.reshape(ttA.shape[0], -1, order = "F")
+        ttA = ttA.reshape(ttA.shape[0], -1, order = "C")
 
         tA = A/np.sum(A, axis = 0)
         init_kl = A_KL(ttA, tA)
         if init_kl < self.KL_prev_best_init:
             self.KL_prev_best_init = init_kl
             self.samples = samples
-            print("I saved the inits!!!")
+            print("I saved the inits!!!")"""
 
 
         #THIS PART IS FOR ADJUST STATE SWITCHING
         if self.state_stabilizer == True:
-            self.A = state_switcher(learned_A = A, true_A = self.true_A.copy(), rebuild_order = "F").copy()
+            self.A = state_switcher(learned_A = A, true_A = self.true_A.copy()).copy()
 
         else:
-            A = np.reshape(A, self.true_A.shape, "F")
+            A = np.reshape(A, self.true_A.shape, "C")
             self.A = A.copy()
 
 
@@ -116,6 +135,7 @@ class agent:
 
     def observe(self, o):
         if self.bayes_observe == False:
+            assert 1/0, "This can't be used anymore, changed states from (4,2) to (2,4)"
 
             if o == 4:
                 if self.chatty_boy == 1:
@@ -164,7 +184,7 @@ class agent:
             self.s = norm_s.copy()
 
     def act(self, u):
-      self.s = np.dot(self.B[u,:], self.s)
+      self.s = np.dot(self.B[u,:], self.s.T).T
 
     def restart_agent(self, start_s, reason_depth, nr_moves):
       self.s = start_s
@@ -539,6 +559,7 @@ def run(me = agent, num_eps = int, start_beliefs = np.ndarray, reason_depth = in
     epoch_states = []
     epoch_best_act_count = []
     A_matrices = []
+
     A_matrices.append(me.A.reshape(me.A.shape[0], -1, order = "F").copy())
     
 
@@ -605,16 +626,16 @@ def run(me = agent, num_eps = int, start_beliefs = np.ndarray, reason_depth = in
 
 
 
-
-        
         if me.obs_model_given == False:
             me.update_A(epoch_obs, epoch_states, epoch_acts)
 
-            print(f"This is the updated A {np.round(np.reshape(me.A, (me.A.shape[0], -1)),2)}")
+            #print(f"This is the updated A: \n {np.round(np.reshape(me.A/np.sum(me.A, axis = 0), (me.A.shape[0], -1), order = "F"),2)}")
 
-        tempA = np.reshape(me.A.copy(), (me.A.shape[0], -1), order = "F") #this is to convert matrix into classic (2,4) (instead of the (4,2) used inside the algorithm)
-        tempA = tempA/np.sum(tempA, axis = 0, keepdims = True)
-        A_matrices.append(tempA)
+        if e < num_eps-1: #can not add the last matrix since there is no next action corr to it
+            tempA = np.reshape(me.A.copy(), (me.A.shape[0], -1))
+            A_matrices.append(tempA)
+    
+    
 
 
     return epoch_positions, A_matrices, cheeses, epoch_best_act_count

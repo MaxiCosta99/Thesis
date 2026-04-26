@@ -3,33 +3,33 @@ import scipy.special as sp
 import matplotlib.pyplot as plt
 import scipy
 
-#np.set_printoptions(precision = 2)
 
+def norm_om(A):
+    return A/np.sum(A, axis = 0)
 
-def state_switcher(learned_A, true_A, rebuild_order):
+def flatten_om(A):
+    return A.reshape(A.shape[0],-1)
+
+def state_switcher(learned_A, true_A):
     """
-    learnedA is a dirichlet counts matrix that comes from the EM algorithm so it is of shape (num_obs, -1)
+    learnedA is a dirichlet counts matrix (can be of shape (num_obs, -1) as also (num_obs,2,4)
     true_A is a categorical of shape (num_obs, 2,2,4,4) or (num_obs, 4,2)
-    rebuild order is either "F" or "C" (use "C" when two agent environment, use "F" when single agent)
-        this was a bad design choice, it is what it is
-    """
-    A_norm = learned_A/np.sum(learned_A, axis = 0)
 
+    output will be of shape of true_A (NOT THE INPUT LEARNED_A SHAPE!!!!!)
+    """
+    learned_A = flatten_om(learned_A)
+    
     A_invstate = np.zeros(learned_A.shape)
     A_invstate[:,0:4] = learned_A[:,4:8]
     A_invstate[:,4:8] = learned_A[:,0:4]
-    A_invstate_norm = A_invstate/np.sum(A_invstate, axis = 0)
 
-    true_A_res = true_A.reshape(true_A.shape[0], -1, order = rebuild_order) #F for single agent, C for two agent
-    true_A_norm = true_A_res/np.sum(true_A_res, axis = 0)
-
-    kl_state = A_KL(true_A_norm, A_norm)
-    kl_invstate = A_KL(true_A_norm, A_invstate_norm)
+    kl_state = A_KL(true_A, learned_A)
+    kl_invstate = A_KL(true_A, A_invstate)
 
     if kl_invstate < kl_state: #states have been switched
-        A = A_invstate.reshape(true_A.shape, order = rebuild_order)
+        A = A_invstate.reshape(true_A.shape)
     else:
-        A = learned_A.reshape(true_A.shape, order = rebuild_order)
+        A = learned_A.reshape(true_A.shape)
 
     return A
 
@@ -48,7 +48,7 @@ def compute_cov_dir(x):
     return y
 
 
-def compute_cov_A(A):
+def compute_norm_cov_A(A):
     """
     A is of shape (num_obs, ...)
     """
@@ -59,8 +59,7 @@ def compute_cov_A(A):
     cov_mat_sum = 0
 
     for a in A.T:
-        cov_mat = compute_cov_dir(a)
-        cov_mat_sum = cov_mat_sum + cov_mat
+        cov_mat_sum =+ np.linalg.norm(compute_cov_dir(a))
 
     return cov_mat_sum
 
@@ -73,11 +72,17 @@ def make_goals_single_agent(reward = float, punishment = float, beta = float, go
     
     if goal_type == "default":
 
-        goals = np.ones((4,2))
+        """goals = np.ones((4,2))
         goals[2,0] = rp
         goals[3,1] = rp
         goals[2,1] = pp
         goals[3,0] = pp
+        goals = goals/np.sum(goals)"""
+        goals = np.ones((2,4))
+        goals[0,2] = rp
+        goals[1,3] = rp
+        goals[1,2] = pp
+        goals[0,3] = pp
         goals = goals/np.sum(goals)
 
     
@@ -326,10 +331,6 @@ def EM(obs_eps, acts_eps, tm_unres, A_param_shape, s_param_shape, gm = None, sta
 
     gm = unnorm_Mstep(inf_states, agent_gm, obs_eps)
 
-    #reshaped_gm = np.reshape(gm,gm_shape, order = "C")
-
-    #print(reshaped_gm.shape)
-
     return gm, [start_sample, end_sample, gm_sample]
 
 
@@ -507,18 +508,62 @@ def logl_action(a, agent, sampled_goal):
 
 def A_KL(A, learned_A):
     """
-    A = (num_obs, -1)
-    learned_A = (num_obs, -1)
+    A = (num_obs, ...)
+    learned_A = (num_obs, ...) has to be normalized
     """
+
+    learned_A = norm_om(flatten_om(learned_A))
+    A = flatten_om(A)
+
+    assert np.allclose(np.sum(A, axis = 0),1), f"The columns of A sum to {np.sum(learned_A, axis = 0)}"
 
     kl = np.where(A != 0, A *np.log(np.divide(A, learned_A)), 0)
     return np.sum(kl)
 
 
 
-def A_KL_plotter(true_A, learned_As_eps, best_action_count):
 
-    true_A_state = np.reshape(true_A, (5,8), order = "F")
+def A_KL_plotter(true_A, learned_As, best_action_count):
+
+    num_eps = len(learned_As)
+    
+    kls = []
+    var = []
+
+    for i in range(num_eps):
+
+        kls.append(A_KL(true_A, state_switcher(learned_As[i], true_A)))
+        var.append(compute_norm_cov_A(learned_As[i]))
+
+
+    fig, ax = plt.subplots()
+    ax.plot(kls, label = "KL between true OM and learned OM", linestyle = "-", color = "blue")
+    ax.plot(np.zeros(num_eps), linestyle = "--")
+    ax.plot(best_action_count, label = "Best action taken count", linestyle = "-.")
+    ax.set_xlabel("Episodes")
+    ax.set_ylabel("KL & action count")
+
+    ax1 = ax.twinx()
+    ax1.plot(var, label = "Variances of the learned OM", linestyle = "-", color = "green")
+    ax1.set_ylabel("Norm of OM covariances")
+
+    lines1, labels1 = ax.get_legend_handles_labels()
+    lines2, labels2 = ax1.get_legend_handles_labels()
+    ax.legend(lines1 + lines2, labels1 + labels2)
+    plt.show()
+
+    
+
+
+
+
+
+
+
+
+def plotter(true_A, learned_As_eps, best_action_count):
+
+    true_A_state = np.reshape(true_A, (5,8))
     true_A_invstate = np.zeros(true_A_state.shape)
     true_A_invstate[:,0:4] = true_A_state[:,4:8]
     true_A_invstate[:,4:8] = true_A_state[:,0:4] 
@@ -607,7 +652,6 @@ def A_KL_plotter(true_A, learned_As_eps, best_action_count):
     fig.colorbar(im1, ax=axes.ravel().tolist())
 
     plt.show()
-
 
 
 
