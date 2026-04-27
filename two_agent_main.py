@@ -59,8 +59,8 @@ branch_reductor1 = "cut"
 mc_samples0 = 1000 #use in case branch reductor is MCTS (it's not really MCTS HEHE)
 mc_samples1 = 100 #use in case branch reductor is MCTS
 
-futuro_prosperoso0 = True #if true only use last efe
-futuro_prosperoso1 = True #if true only use last efe
+futuro_prosperoso0 = False #if true only use last efe
+futuro_prosperoso1 = False #if true only use last efe
 
 little_o_imaginer = True
 o_prob_threshold = 0.1
@@ -72,25 +72,25 @@ u_prob_threshold = 0.1
 def default():
 
         #world params
-        B = det_B
+        B = mdp_B
         reward = 2 #for mdp_B I need 3, for det_B I need 2
-        punishment = 7 #for mdp_B i need 8, for det_B I need 5
+        punishment = 5 #for mdp_B i need 8, for det_B I need 5
         beta = 1
-        goal_type = "default"
+        goal_type = "default" #default or obs
         uncertain_goals = False
         agent0_goals, agent1_goals = make_goals_two_agent(reward = reward, punishment = punishment, beta = beta, goal_type = goal_type, uncertain_goals = uncertain_goals)
-        nr_moves = 10
-        obs_model_given = False #I am sorry for this
+        nr_moves = 10 # Doesnt matter now
+        obs_model_given = True #I am sorry for this
         A_learning = not obs_model_given
         exploration = False
 
 
         #agent params
         reason_depth = 3
-        dec_temp = 1
+        dec_temp = 0
 
 
-        social0 = False
+        social0 = True
         social1 = False
 
         terms0 = ["risk", "epi_value"]
@@ -107,14 +107,11 @@ def default():
         empathetic0 = False #to learn goals of other
         empathetic1 = False #to learn goals of ohter
 
-        random_action1 = True
-        random_action2 = True
-
-        det_dec_rule0 = False
-        det_dec_rule1 = False
 
         state_stabilizer0 = False
         state_stabilizer1 = False
+
+
 
 
 
@@ -142,7 +139,8 @@ def default():
         
         
         desires_other_showtype = "mean"
-        epochs = 50
+        epochs = 100
+        acclimatization_episodes = 25
 
 
 
@@ -153,7 +151,7 @@ def default():
                 agent_id = 0, moves_to_go = nr_moves, social = social0, terms = terms0, sampling = sampling0,
                 branch_reductor = branch_reductor0, mc_samples = mc_samples0, selfish = selfish0, empathetic = empathetic0,
                 bayes_observe = bayes_observe0, obs_model_given = obs_model_given, futuro_prosperoso = futuro_prosperoso0,
-                random_action = random_action1, det_dec_rule = det_dec_rule0, state_stabilizer = state_stabilizer0)
+                state_stabilizer = state_stabilizer0)
 
         agent1 = agent(agent1_full_A.copy(), B.copy(), copy.deepcopy(full_start_s), U = U.copy(), goal_states = copy.deepcopy(agent1_goals), goal_obs = agent1_goals.copy(),
                 reason_depth = reason_depth, dec_temp = dec_temp, chatty_boy = 0,
@@ -162,7 +160,7 @@ def default():
                 agent_id = 1, moves_to_go = nr_moves, social = social1, terms = terms1, sampling = sampling1,
                 branch_reductor = branch_reductor1, mc_samples = mc_samples1, selfish = selfish1, empathetic = empathetic1,
                 bayes_observe = bayes_observe1, obs_model_given = obs_model_given, futuro_prosperoso = futuro_prosperoso1,
-                random_action = random_action2, det_dec_rule = det_dec_rule1, state_stabilizer = state_stabilizer1)
+                state_stabilizer = state_stabilizer1)
 
 
 
@@ -170,10 +168,10 @@ def default():
 
         epochs_positions, epochs_A_matrices, epochs_agent_worlds, epochs_beliefs, epochs_desires, cheeses = run(agent0 = agent0, agent1 = agent1, epochs = epochs, nr_moves = nr_moves, reason_depth = reason_depth, start_beliefs = copy.deepcopy(full_start_s),
                                                                                                         exploration_phase = exploration, A_learning = A_learning, infer_only_on_last_action = infer_only_on_last_action,
-                                                                                                        opt_params = opt_params)
+                                                                                                        opt_params = opt_params, acclimatization_episodes = acclimatization_episodes)
         
-        animate(epochs_positions, cheeses, A_matrices = epochs_A_matrices, agent_worlds = epochs_agent_worlds, epochs_beliefs = epochs_beliefs, epochs_desires = epochs_desires,
-        desires_other_showtype = desires_other_showtype)
+        #animate(epochs_positions, cheeses, A_matrices = epochs_A_matrices, agent_worlds = epochs_agent_worlds, epochs_beliefs = epochs_beliefs, epochs_desires = epochs_desires,
+        #desires_other_showtype = desires_other_showtype)
 
 
 

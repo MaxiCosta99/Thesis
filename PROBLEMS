@@ -104,3 +104,4 @@ for now only using sampling of goals
 'beta1': 0.969, 'beta2': 0.8976, 'num_iters': 33, 'num_samples': 181, 'step_size': 0.0140
 [[0.906091   0.91564468 4.06505593 0.91863662]
  [0.94312205 0.94739057 0.94531639 3.2414335 ]]
+

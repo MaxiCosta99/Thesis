@@ -34,7 +34,7 @@ class agent:
                agent_id = int, moves_to_go = int, social = bool, terms = list, sampling = str,
                branch_reductor = str, mc_samples = int, selfish = bool, empathetic = bool,
                bayes_observe = bool, obs_model_given = bool, futuro_prosperoso = bool,
-               random_action = bool, det_dec_rule = bool, state_stabilizer = bool):
+               random_moves = bool, det_dec_rule = bool, state_stabilizer = bool):
     if  obs_model_given == True:
         self.A = A
     else:
@@ -74,17 +74,25 @@ class agent:
     self.bayes_observe = bayes_observe
     self.futuro_prosperoso = futuro_prosperoso
 
-    self.random_action = random_action
-    self.det_dec_rule = det_dec_rule
+
 
     self.true_A = A
 
     self.state_stabilizer = state_stabilizer
 
+    if len(self.terms) == 0:
+        self.random_moves = True
+    else:
+        self.random_moves = False
+
+    if self.dec_temp == 0:
+        self.det_dec_rule = True
+    else:
+        self.det_dec_rule = False
 
 
   def acting_randomly(self, new_action_type):
-      self.random_action = new_action_type
+      self.random_moves = new_action_type
   
   def restart_agent(self, start_s, reason_depth, nr_moves):
       self.s = start_s.copy()
@@ -519,7 +527,6 @@ class agent:
 
 
   def act(self, u):
-
 
     my_s = self.s[0].copy()
     mybel_his_s = self.s[1].copy()
@@ -1024,10 +1031,10 @@ class agent:
 
   def pick_action(self):
       
-      if self.random_action == False:
+      if self.random_moves == False:
 
           u_imagined, H = self.SFE_call_self()
-          print(f"These are the actions considered by agent {self.agent_id} with their dec_temp 1 probs {u_imagined}, {np.round(softmax(H,1),2)}")
+          print(f"These are the actions considered by agent {self.agent_id} with their EFE {u_imagined}, {np.round(H,2)}")
           assert len(u_imagined) > 0, "No action imagined"
 
           if self.det_dec_rule == True:
@@ -1215,7 +1222,7 @@ def true_A(base, pretrain_strength = float, other_strength = float):
 
 def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_beliefs = np.array,
         exploration_phase = bool, A_learning = bool,
-        infer_only_on_last_action = bool, opt_params = dict):
+        infer_only_on_last_action = bool, opt_params = dict, acclimatization_episodes = int):
 
 
 
@@ -1252,10 +1259,35 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
     print("__________________________________")
 
 
-    if exploration_phase == True:
-        where_are_you = np.random.randint(0,2)
-        agent0.change_environment(where_are_you)
-        agent1.change_environment(abs(where_are_you-1))
+    if e < acclimatization_episodes:
+        agent0.agent_id = 0
+        agent1.agent_id = 1
+        nr_moves = 10
+        agent0.random_moves = True
+        agent0.moves_to_go = nr_moves
+        agent1.random_moves = True
+        agent1.moves_to_go = nr_moves
+
+    else:
+        if exploration_phase == True:
+            where_are_you = np.random.randint(0,2)
+            agent0.change_environment(where_are_you)
+            agent1.change_environment(abs(where_are_you-1))
+
+        if agent0.agent_id == 0:
+            nr_moves = 3
+            agent0.random_moves = False
+            agent0.moves_to_go = nr_moves
+            agent1.random_moves = False
+            agent1.moves_to_go = nr_moves
+
+        else:
+            nr_moves = 10
+            agent0.random_moves = True
+            agent0.moves_to_go = nr_moves
+            agent1.random_moves = True
+            agent1.moves_to_go = nr_moves
+
 
     epochs_agent_worlds.append((agent0.agent_id, agent1.agent_id))
     
@@ -1358,6 +1390,7 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
         #print(f"This is the beliefs of agent 1 after observing: {agent1.s}")
 
       else:
+
         u = agent0.explore()
         agent0.act(u)
         #print("This is the action taken by agent 0: " + str(u))
@@ -1426,7 +1459,7 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
             epochs_observations0["lw"].append(agent0_obs)
             epochs_actions0["lw"].append(agent0_acts)
                 
-            A = EM(epochs_observations0["lw"],
+            A, _ = EM(epochs_observations0["lw"],
                         epochs_actions0["lw"],
                         agent0.B.copy(),
                         A_param_shape = (11,2,4),
@@ -1436,9 +1469,9 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
             true_A = np.einsum("ijklo -> ijl", agent0.true_A[0].copy())
 
             if agent0.state_stabilizer == True:
-                A = state_switcher(learned_A = A, true_A = true_A, rebuild_order = "C")
+                A = state_switcher(learned_A = A, true_A = true_A)
             else:
-                A = np.reshape(A, true_A.shape, order = "C")
+                A = np.reshape(A, true_A.shape)
     
             
             temp = np.repeat(A[:,:,np.newaxis,:,np.newaxis], axis = 2, repeats = 2)
@@ -1448,7 +1481,7 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
 
             epochs_observations1["rw"].append(agent1_obs)
             epochs_actions1["rw"].append(agent1_acts)
-            A = EM(epochs_observations1["rw"],
+            A, _ = EM(epochs_observations1["rw"],
                         epochs_actions1["rw"],
                         agent1.B.copy(),
                         A_param_shape = (11,2,4),
@@ -1458,7 +1491,7 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
             true_A = np.einsum("ijklo -> iko", agent1.true_A[0].copy())
 
             if agent1.state_stabilizer == True:
-                A = state_switcher(learned_A = A, true_A = true_A, rebuild_order = "C")
+                A = state_switcher(learned_A = A, true_A = true_A)
             else:
                 A = np.reshape(A, true_A.shape, order = "C")
 
@@ -1472,7 +1505,7 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
             epochs_observations0["rw"].append(agent0_obs)
             epochs_actions0["rw"].append(agent0_acts)
 
-            A = EM(epochs_observations0["rw"],
+            A, _ = EM(epochs_observations0["rw"],
                         epochs_actions0["rw"],
                         agent0.B.copy(),
                         A_param_shape = (11,4,2),
@@ -1482,7 +1515,7 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
             true_A = np.einsum("ijklo -> iko", agent0.true_A[1].copy())
 
             if agent0.state_stabilizer == True:
-                A = state_switcher(learned_A = A, true_A = true_A, rebuild_order = "C")
+                A = state_switcher(learned_A = A, true_A = true_A)
             else:
                 A = np.reshape(A, true_A.shape, order = "C")
             
@@ -1494,7 +1527,7 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
 
             epochs_observations1["lw"].append(agent1_obs)
             epochs_actions1["lw"].append(agent1_acts)
-            A = EM(epochs_observations1["lw"],
+            A, _ = EM(epochs_observations1["lw"],
                         epochs_actions1["lw"],
                         agent1.B.copy(),
                         A_param_shape = (11,4,2),
@@ -1504,7 +1537,7 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
             true_A = np.einsum("ijklo -> ijl", agent1.true_A[1].copy())
 
             if agent1.state_stabilizer == True:
-                A = state_switcher(learned_A = A, true_A = true_A, rebuild_order = "C")
+                A = state_switcher(learned_A = A, true_A = true_A)
             else:
                 A = np.reshape(A, true_A.shape, order = "C")
             

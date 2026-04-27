@@ -1,6 +1,6 @@
 import numpy as np
 import math
-from utils import EM, A_KL, state_switcher
+from utils import EM, A_KL, state_switcher, norm_om, flatten_om
 
 def softmax(x, beta):
     return np.exp(-x/beta)/np.sum(np.exp(-x/beta))
@@ -31,7 +31,7 @@ class agent:
                goal_obs = None, moves_to_go = int, bayes_observe = bool, terms = list,
                obs_model_given = bool, infer_before_update_obs_model = bool,
                update_A_method = str, state_stabilizer = bool,
-               EM_inits = dict):
+               EM_inits = dict, sampling = str):
         if obs_model_given == True:
             self.A = A.copy()
         else:
@@ -58,6 +58,8 @@ class agent:
         self.update_A_method = update_A_method
 
         self.state_stabilizer = state_stabilizer
+
+        self.sampling = sampling
 
         self.true_A = A.copy()
 
@@ -86,6 +88,12 @@ class agent:
         assert self.reason_depth >= 1, f"My man you want to do zero thinking?"
 
         assert self.moves_to_go >= 1, f"You can always move"
+
+        sampling_terms = ["sample", "default"]
+        assert self.sampling in sampling_terms, f"{self.sampling} is not in the impemented list of sampling methods {sampling_terms}"
+
+
+
 
     def update_A(self, ep_observations, ep_states, ep_actions):
 
@@ -130,6 +138,48 @@ class agent:
 
         assert self.obs_model_given == False, f"The obs model is given, can't update it"
         assert self.A.shape == old_A_shape, f"The shape of A changed from {old_A_shape} to {self.A.shape} after updating, something is wrong"
+
+    def sample(self):
+        
+
+        if self.sampling == "sample":
+
+            flat_om = flatten_om(self.A.copy())
+
+            assert np.all(np.sum(flat_om, axis = 0) != 1)
+
+            num_states = flat_om.shape[1]
+            sampled_A = np.zeros(flat_om.shape)
+            
+            for i in range(num_states):
+                sampled_A[:,i] = np.random.dirichlet(flat_om[:,i])
+
+            sampled_A = np.reshape(sampled_A, self.A.shape)
+
+        elif self.sampling == "default":
+            sampled_A = self.A
+
+          
+        
+        else:
+            assert 1/0, f"There is no other sampling method for now"
+
+        assert sampled_A.shape == (5,2,4), f"This is a strong test but as sanity check for my single agent case"
+
+        self.A = sampled_A
+
+
+
+    def SFE_call(self):
+        om_cp = self.A.copy()
+
+        self.sample()
+        u_imagined, Hu = self.SFE()
+
+        self.A = om_cp.copy()
+
+        return u_imagined, Hu
+
 
 
 
@@ -230,6 +280,9 @@ class agent:
       return risk_obs
 
     def compute_novelty(self):
+      
+      assert self.sampling == "default", f"Novelty is only for default OM sampling (no sample), but instead it is {self.sampling}"
+
       A_flat = self.A.reshape(self.A.shape[0], -1)
       A_flat_norm = A_flat/np.sum(A_flat, axis = 0)
       s_flat = self.s.reshape(-1)
@@ -461,7 +514,7 @@ class agent:
 
           
       else:
-          u_imagined, Hu = self.SFE()
+          u_imagined, Hu = self.SFE_call()
 
           print(f"These are the actions imagined {u_imagined} \n With their EFE's: {Hu}")
 
@@ -551,7 +604,7 @@ def pretrain(me: agent, epochs, start_s_beliefs, cheeses):
     return epoch_positions
 
 
-def run(me = agent, num_eps = int, start_beliefs = np.ndarray, reason_depth = int, nr_moves = int):
+def run(me = agent, num_eps = int, start_beliefs = np.ndarray, reason_depth = int, nr_moves = int, acclimatization_episodes = int):
     
     epoch_positions = []
     epoch_acts = []
@@ -560,24 +613,16 @@ def run(me = agent, num_eps = int, start_beliefs = np.ndarray, reason_depth = in
     epoch_best_act_count = []
     A_matrices = []
 
-    A_matrices.append(me.A.reshape(me.A.shape[0], -1, order = "F").copy())
+    A_matrices.append(me.A.reshape(me.A.shape[0], -1).copy())
     
-
-    true_best_acts = np.zeros((num_eps, nr_moves))
-    true_best_acts[:,0] = 0
-    true_best_acts[:,1] = 1
 
     cheeses = []
     for i in range(num_eps):
         cheese_pos = np.random.choice([0,1])
         cheeses.append(cheese_pos)
-        if cheese_pos == 0:
-            true_best_acts[i,2] = 2
-        else:
-            true_best_acts[i,2] = 3
-        
 
-
+    best_move = [0,1]
+            
 
     for e in range(num_eps):
         print(" ")
@@ -595,6 +640,17 @@ def run(me = agent, num_eps = int, start_beliefs = np.ndarray, reason_depth = in
 
         best_act_counter = 0
 
+        if e < acclimatization_episodes:
+            nr_moves = 10
+            me.random_moves = True
+            me.moves_to_go = nr_moves
+        else:
+            nr_moves = 3
+            me.random_moves = False
+            me.moves_to_go = nr_moves
+
+            
+
 
         for i in range(nr_moves):
             u = me.pick_action()
@@ -611,9 +667,17 @@ def run(me = agent, num_eps = int, start_beliefs = np.ndarray, reason_depth = in
             positions.append(pos_conv(w.true_s))
             acts.append(u)
             observations.append(o)
-            
-            if true_best_acts[e,i] == u:
-                best_act_counter = best_act_counter + 1
+
+
+            if e >= acclimatization_episodes:
+                if i < 2 and u == best_move[i]:
+                    best_act_counter = best_act_counter + 1
+
+                elif cheeses[e] == 0 and i == 2 and u == 2:
+                    best_act_counter = best_act_counter + 1
+                
+                elif cheeses[e] == 1 and i == 2 and u == 3:
+                    best_act_counter = best_act_counter + 1
 
 
         

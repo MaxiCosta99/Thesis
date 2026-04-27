@@ -201,7 +201,8 @@ def Estep(obs_eps, acts_eps, start, end, tm, gm):
     num_visits = len(obs_eps[0])+1
     num_states = gm.shape[1]
     
-    inf_states_eps = np.zeros((num_eps, num_visits, num_states))
+    #inf_states_eps = np.zeros((num_eps, num_visits, num_states))
+    inf_states_eps = []
 
     for i, (obs, acts) in enumerate(zip(obs_eps, acts_eps)):
         
@@ -225,9 +226,11 @@ def Estep(obs_eps, acts_eps, start, end, tm, gm):
                 state[:4] = 0"""
 
 
-        inf_states_eps[i] = inf_states
+        #inf_states_eps[i] = inf_states
+        inf_states_eps.append(inf_states)
 
     return inf_states_eps
+
 
 def Mstep(inf_states_eps, gm, obs_eps):
     
@@ -553,6 +556,23 @@ def A_KL_plotter(true_A, learned_As, best_action_count):
     plt.show()
 
     
+def A_diff_plotter(true_A, learned_A):
+    A = norm_om(flatten_om(learned_A))
+    true_A = flatten_om(true_A)
+
+    fig, ax = plt.subplots(1,2)
+    
+    im1 = ax[0].imshow(true_A,cmap ="viridis", vmin = 0, vmax = 1)
+    ax[0].set_title("True A")
+    im2 = ax[1].imshow(A,cmap = "viridis", vmin = 0, vmax = 1)
+    ax[1].set_title("Average of final learned A")
+
+
+    plt.colorbar(im1, ax=ax[0])
+    plt.colorbar(im2, ax=ax[1])
+
+    #plt.title("Comparison of the true OM and the average of the final learned OM")
+    plt.show()
 
 
 

@@ -2,8 +2,6 @@ import numpy as np
 import scipy
 
 
-i = 0
+test = (1,2,3)
 
-i =+ 5
-
-print(i)
+print(np.prod(test[1:]))
