@@ -1,6 +1,6 @@
 import numpy as np
 import math
-from utils import EM
+from utils import EM, A_KL, state_switcher, norm_om, flatten_om
 
 def softmax(x, beta):
     return np.exp(-x/beta)/np.sum(np.exp(-x/beta))
@@ -26,10 +26,17 @@ def pos_conv(pos):
 class agent:
     def __init__(self, A, B, s, U,
                goal_states, reason_depth = int, dec_temp = float, chatty_boy = bool,
-               little_o_imaginer = bool, o_imagination_breadth = int, o_prob_threshold = float,
-               little_u_imaginer = bool, u_imagination_breadth = int, u_prob_threshold = float,
-               goal_obs = None, moves_to_go = int, bayes_observe = bool, terms = list):
-        self.A = A
+               little_o_imaginer = bool, o_prob_threshold = float,
+               little_u_imaginer = bool, u_prob_threshold = float,
+               goal_obs = None, moves_to_go = int, bayes_observe = bool, terms = list,
+               obs_model_given = bool, infer_before_update_obs_model = bool,
+               update_A_method = str, state_stabilizer = bool,
+               EM_inits = dict, sampling = str):
+        if obs_model_given == True:
+            self.A = A.copy()
+        else:
+            self.A = np.random.beta(10,1,(5,2,4)).copy()
+            #self.A = np.random.uniform(0,1,(5,4,2)).copy()
         self.s = s
         self.B = B
         self.U = U
@@ -38,27 +45,147 @@ class agent:
         self.chatty_boy = chatty_boy
         self.dec_temp = dec_temp
         self.little_o_imaginer = little_o_imaginer
-        self.o_imagination_breadth = o_imagination_breadth
         self.little_u_imaginer = little_u_imaginer
-        self.u_imagination_breadth = u_imagination_breadth
         self.u_prob_threshold = u_prob_threshold
         self.o_prob_threshold = o_prob_threshold
         self.goal_obs = goal_obs
         self.moves_to_go = moves_to_go
         self.bayes_observe = bayes_observe
         self.terms = terms
+        self.obs_model_given = obs_model_given
+        self.infer_before_update_obs_model = infer_before_update_obs_model
+
+        self.update_A_method = update_A_method
+
+        self.state_stabilizer = state_stabilizer
+
+        self.sampling = sampling
+
+        self.true_A = A.copy()
+
+        self.samples = 0 #use this to find the best initialization for the EM
+        self.KL_prev_best_init = 10000
+        self.EM_inits = EM_inits
+
+        if len(self.terms) == 0:
+            self.random_moves = True
+        else:
+            self.random_moves = False
+
+        if self.dec_temp == 0:
+            self.det_dec_rule = True
+        else:
+            self.det_dec_rule = False
+
+        implemented_terms = ["risk", "risk_obs", "nov", "abg"]
+        for term in self.terms:
+            assert term in implemented_terms, f"{term} is not in the implemented list of: {implemented_terms}"
+
+        
+        A_update_methods = ["default", "EM_all_ep", "EM_current_ep"]
+        assert self.update_A_method in A_update_methods, f"{self.update_A_method} is not in the implemented list of methods: {A_update_methods}"
+
+        assert self.reason_depth >= 1, f"My man you want to do zero thinking?"
+
+        assert self.moves_to_go >= 1, f"You can always move"
+
+        sampling_terms = ["sample", "default"]
+        assert self.sampling in sampling_terms, f"{self.sampling} is not in the impemented list of sampling methods {sampling_terms}"
 
 
-    def update_A(self, o, s):
-        self.s = s
-        self.observe(o) #infer which state we were in before updating A
-        self.A[o,:] = self.A[o,:] + self.s
+
+
+    def update_A(self, ep_observations, ep_states, ep_actions):
+
+        old_A_shape = self.A.shape
+
+        if self.update_A_method == "default":
+            for o,s in zip(ep_observations[-1], ep_states[-1]):
+                self.s = s
+                if self.infer_before_update_obs_model == True:
+                    self.observe(o) #infer which state we were in before updating A
+                self.A[o,:] = self.A[o,:] + self.s
+        
+        if self.update_A_method == "EM_all_ep":
+            A, samples = EM(obs_eps = ep_observations, acts_eps = ep_actions, tm_unres = self.B.copy(), A_param_shape = (5,2,4), s_param_shape = (2,4), gm = self.EM_inits["gm"], start = self.EM_inits["start"], end = self.EM_inits["end"])
+         
+
+        if self.update_A_method == "EM_current_ep":
+            A, samples = EM(obs_eps = ep_observations[-1:], acts_eps = ep_actions[-1:], tm_unres = self.B.copy(), A_param_shape = self.A.shape, s_param_shape = self.s.shape, gm = self.A.copy(), start = None, end = None)
+         
+
+        """
+        #this is used in calls to learn optimal inits for the EM
+        ttA = self.true_A.copy()
+        ttA = ttA.reshape(ttA.shape[0], -1, order = "C")
+
+        tA = A/np.sum(A, axis = 0)
+        init_kl = A_KL(ttA, tA)
+        if init_kl < self.KL_prev_best_init:
+            self.KL_prev_best_init = init_kl
+            self.samples = samples
+            print("I saved the inits!!!")"""
+
+
+        #THIS PART IS FOR ADJUST STATE SWITCHING
+        if self.state_stabilizer == True:
+            self.A = state_switcher(learned_A = A, true_A = self.true_A.copy()).copy()
+
+        else:
+            A = np.reshape(A, self.true_A.shape, "C")
+            self.A = A.copy()
+
+
+        assert self.obs_model_given == False, f"The obs model is given, can't update it"
+        assert self.A.shape == old_A_shape, f"The shape of A changed from {old_A_shape} to {self.A.shape} after updating, something is wrong"
+
+    def sample(self):
+        
+
+        if self.sampling == "sample":
+
+            flat_om = flatten_om(self.A.copy())
+
+            assert np.all(np.sum(flat_om, axis = 0) != 1)
+
+            num_states = flat_om.shape[1]
+            sampled_A = np.zeros(flat_om.shape)
+            
+            for i in range(num_states):
+                sampled_A[:,i] = np.random.dirichlet(flat_om[:,i])
+
+            sampled_A = np.reshape(sampled_A, self.A.shape)
+
+        elif self.sampling == "default":
+            sampled_A = self.A
+
+          
+        
+        else:
+            assert 1/0, f"There is no other sampling method for now"
+
+        assert sampled_A.shape == (5,2,4), f"This is a strong test but as sanity check for my single agent case"
+
+        self.A = sampled_A
+
+
+
+    def SFE_call(self):
+        om_cp = self.A.copy()
+
+        self.sample()
+        u_imagined, Hu = self.SFE()
+
+        self.A = om_cp.copy()
+
+        return u_imagined, Hu
 
 
 
 
     def observe(self, o):
         if self.bayes_observe == False:
+            assert 1/0, "This can't be used anymore, changed states from (4,2) to (2,4)"
 
             if o == 4:
                 if self.chatty_boy == 1:
@@ -107,7 +234,7 @@ class agent:
             self.s = norm_s.copy()
 
     def act(self, u):
-      self.s = np.dot(self.B[u,:], self.s)
+      self.s = np.dot(self.B[u,:], self.s.T).T
 
     def restart_agent(self, start_s, reason_depth, nr_moves):
       self.s = start_s
@@ -127,6 +254,11 @@ class agent:
       goals_flat = np.reshape(self.goal_states, (self.goal_states.shape[0]*self.goal_states.shape[1]))
       #risk = np.dot(s_flat.T, np.log(np.divide(s_flat, goals_flat)))
       #risk = np.sum(np.where(s_flat != 0, np.multiply(s_flat, np.log(np.divide(s_flat, goals_flat))), 0))
+      #print(f"This is the log belief over states: {np.log(s_flat)} \n and these are the log goals: {np.log(goals_flat)}")
+      #print(f" This is the divide term: {np.divide(s_flat, goals_flat)}")
+      #print(f" This is the log divide term: {np.where(s_flat != 0, np.log(np.divide(s_flat,goals_flat)), 0)}")
+
+
       temp = np.multiply(s_flat, np.log(np.divide(s_flat,goals_flat)))
       risk = np.nansum(temp)
       return risk
@@ -148,6 +280,9 @@ class agent:
       return risk_obs
 
     def compute_novelty(self):
+      
+      assert self.sampling == "default", f"Novelty is only for default OM sampling (no sample), but instead it is {self.sampling}"
+
       A_flat = self.A.reshape(self.A.shape[0], -1)
       A_flat_norm = A_flat/np.sum(A_flat, axis = 0)
       s_flat = self.s.reshape(-1)
@@ -168,23 +303,85 @@ class agent:
       temp3 = np.dot(temp2, s_flat)
       nov = np.dot(s_flat, temp3)"""
 
+      assert self.obs_model_given == False, f"Novelty is useless if the observation model is not being learned"
 
       return nov
 
+    def compute_epistemic_value(self, start_belief):
+
+
+      
+        A_flat = self.A.reshape(self.A.shape[0], -1).copy()
+        A_flat_norm = A_flat/np.sum(A_flat, axis = 0)
+        s_flat = self.s.reshape(-1).copy()
+
+        num_obs = self.A.shape[0]
+
+        po = np.dot(A_flat_norm, s_flat)
+
+
+        ponz = po[po!=0]
+        O = np.arange(num_obs)
+        Onz = O[po!=0]
+
+        
+
+        #print(f"These are the Onz: {Onz}")
+        #print(f"These are the ponz: {ponz}")
+
+        kls = np.zeros(Onz.shape[0])
+
+        bbo = self.s.copy() #belief before observing
+        bbo_flat = bbo.reshape(-1)
+        bba_flat = start_belief.reshape(-1) #NO DON'T USE THIS, MAKE NO SENSE
+        for j,o in enumerate(Onz):
+            self.observe(o)
+            bao = self.s.copy() #belief after observing
+            bao_flat = bao.reshape(-1)
+            kls[j] = np.dot(bao_flat, np.where(bao_flat != 0, np.log(np.divide(bao_flat, bbo_flat)), 0))
+
+            self.s = bbo.copy()
+
+        epi_value = np.dot(ponz, kls)
+
+        assert not np.isnan(epi_value), "Epi value is NaN"
+        assert np.allclose(np.sum(po), 1.0), f"Observation probabilities do not sum to 1, they sum to {np.sum(po)}"
+
+        return epi_value
+
+
 
     def compute_EFE(self, u):
-      cp = self.s
+      cp = self.s.copy()
       self.act(u)
 
       toconsider = 0
+      term_values = {}
+
       if "abg" in self.terms:
-          toconsider = self.compute_ambiguity()
-      elif "risk" in self.terms:
-          toconsider = toconsider + self.compute_risk()
-      elif "risk_obs" in self.terms:
-          toconsider = toconsider + self.compute_risk_obs()
-      elif "nov" in self.terms:
-          toconsider = toconsider - self.compute_novelty()
+          abg = self.compute_ambiguity()
+          term_values["abg"] = abg
+          toconsider = toconsider + abg
+
+      if "risk" in self.terms:
+          risk = self.compute_risk()
+          term_values["risk"] = risk
+          toconsider = toconsider + risk
+
+      if "risk_obs" in self.terms:
+          risk_obs = self.compute_risk_obs()
+          term_values["risk_obs"] = risk_obs
+          toconsider = toconsider + risk_obs
+
+      if "nov" in self.terms:
+          novelty = self.compute_novelty()
+          term_values["novelty"] = novelty
+          toconsider = toconsider - novelty
+
+      if "epi_value" in self.terms:
+          epi_val = self.compute_epistemic_value(cp)
+          term_values["epi_value"] = epi_val
+          toconsider = toconsider - epi_val
       
       EFE = toconsider
       
@@ -200,7 +397,7 @@ class agent:
       #EFE = -novelty
 
       self.s = cp
-      return EFE
+      return EFE, term_values
 
 
     def imagine_u(self):
@@ -208,7 +405,8 @@ class agent:
 
         pu = np.zeros(len(self.U))
         for u in self.U:
-          pu[u] = self.compute_EFE(u)
+          #print(f"This is the action I am considering {u}")
+          pu[u], _ = self.compute_EFE(u)
 
         #print(f"pus inside the imagine_u before softmax {pu}")
         pu = softmax(pu, 1)
@@ -252,16 +450,20 @@ class agent:
 
       cp = self.s
       for i,u in enumerate(u_imagined):
-        H[i]=self.compute_EFE(u)
+        H[i], term_values = self.compute_EFE(u)
+        # print(f" The term values of action {u} are {term_values} \n The EFE of that action is {H[i]}")
+
         if current_depth < self.reason_depth:
           self.act(u)
           future_EFE = self.SFEr(current_depth + 1)
           H[i] = H[i] + future_EFE
+          #print(f"The future term of that action is {future_EFE}")
+          #print(f"The SFE of that action is {H[i]}")
           self.s = cp
 
       #print(f"these are the probabilities before picking and before softmax: {H}")
 
-      return u_imagined, softmax(np.array(H), self.dec_temp) #1 is the decision temperature
+      return u_imagined, np.array(H)
 
 
     def SFEr(self, current_depth):
@@ -280,7 +482,7 @@ class agent:
 
         cp2 = self.s
         for j,u in enumerate(u_imagined):
-          Hrou[j] = self.compute_EFE(u)
+          Hrou[j], _ = self.compute_EFE(u)
 
           if current_depth < self.reason_depth:
             self.act(u)
@@ -288,8 +490,9 @@ class agent:
             Hrou[j] = Hrou[j] + future_EFE
             self.s = cp2
 
-
+        #print(f"The are the EFEs {Hrou} \n of the imagined actions {u_imagined} \n after the imaginary observation {o} \n at depth {current_depth}")
         pur = softmax(Hrou, 1) #makes more sense to have 1 decision temperature since this is counterfactual reasoning
+        #print(f"And these are the probabilities of those actions: {pur}")
 
         Hro[i] = np.dot(pur, Hrou)
         self.s = cp1
@@ -305,12 +508,28 @@ class agent:
 
 
     def pick_action(self):
+      
+      if self.random_moves == True:
+          action = np.random.choice(self.U)
 
-      u_imagined, Gu = self.SFE()
+          
+      else:
+          u_imagined, Hu = self.SFE_call()
 
-      #print(f"This are the probabilities when i pick: {Gu}")
+          print(f"These are the actions imagined {u_imagined} \n With their EFE's: {Hu}")
 
-      action = np.random.choice(u_imagined, p = Gu)
+
+          pu = softmax(Hu, self.dec_temp)
+
+          if self.det_dec_rule == True:
+              action = u_imagined[np.argmin(Hu)]
+          
+          else:
+              action = np.random.choice(u_imagined, p = pu)
+
+          print(f"This is the real action taken: {action}")
+
+
 
       self.moves_to_go = self.moves_to_go - 1
 
@@ -385,16 +604,27 @@ def pretrain(me: agent, epochs, start_s_beliefs, cheeses):
     return epoch_positions
 
 
-def run(me = agent, epochs = int, nr_actions = int, start_beliefs = np.ndarray, reason_depth = int, nr_moves = int, cheeses = list):
+def run(me = agent, num_eps = int, start_beliefs = np.ndarray, reason_depth = int, nr_moves = int, acclimatization_episodes = int):
     
     epoch_positions = []
     epoch_acts = []
     epoch_obs = []
+    epoch_states = []
+    epoch_best_act_count = []
     A_matrices = []
+
     A_matrices.append(me.A.reshape(me.A.shape[0], -1).copy())
+    
 
+    cheeses = []
+    for i in range(num_eps):
+        cheese_pos = np.random.choice([0,1])
+        cheeses.append(cheese_pos)
 
-    for e in range(epochs):
+    best_move = [0,1]
+            
+
+    for e in range(num_eps):
         print(" ")
         print("__________________________________")
         print("New world: " + str(e))
@@ -408,15 +638,23 @@ def run(me = agent, epochs = int, nr_actions = int, start_beliefs = np.ndarray, 
         acts = []
 
 
-        for _ in range(nr_actions):
+        best_act_counter = 0
+
+        if e < acclimatization_episodes:
+            nr_moves = 10
+            me.random_moves = True
+            me.moves_to_go = nr_moves
+        else:
+            nr_moves = 3
+            me.random_moves = False
+            me.moves_to_go = nr_moves
+
+            
+
+
+        for i in range(nr_moves):
             u = me.pick_action()
             me.act(u)
-
-            #print("This is the action taken: " + str(u))
-            #print("This is the state after moving: " + str(me.s))
-
-            #print(f"The risk of the action is: {me.compute_risk_obs()}")
-            #print(f"The novelty of the action is: {me.compute_novelty()}")
 
             states.append(me.s)
 
@@ -429,30 +667,42 @@ def run(me = agent, epochs = int, nr_actions = int, start_beliefs = np.ndarray, 
             positions.append(pos_conv(w.true_s))
             acts.append(u)
             observations.append(o)
-            #print("This is the state after observing: " + str(me.s))
+
+
+            if e >= acclimatization_episodes:
+                if i < 2 and u == best_move[i]:
+                    best_act_counter = best_act_counter + 1
+
+                elif cheeses[e] == 0 and i == 2 and u == 2:
+                    best_act_counter = best_act_counter + 1
+                
+                elif cheeses[e] == 1 and i == 2 and u == 3:
+                    best_act_counter = best_act_counter + 1
+
+
         
 
         epoch_positions.append(positions)
         epoch_obs.append(observations)
         epoch_acts.append(acts)
+        epoch_states.append(states)
+        epoch_best_act_count.append(best_act_counter)
 
 
 
-        """for o,s in zip(observations, states):
-            me.update_A(o,s)
+        if me.obs_model_given == False:
+            me.update_A(epoch_obs, epoch_states, epoch_acts)
 
-            #print(f"This is the updated A {me.A}")"""
+            #print(f"This is the updated A: \n {np.round(np.reshape(me.A/np.sum(me.A, axis = 0), (me.A.shape[0], -1), order = "F"),2)}")
 
-                   
-        me.A = EM(epoch_obs, epoch_acts, me.B.copy(), me.A.copy(), start_beliefs, states[-1], 100).copy()
+        if e < num_eps-1: #can not add the last matrix since there is no next action corr to it
+            tempA = np.reshape(me.A.copy(), (me.A.shape[0], -1))
+            A_matrices.append(tempA)
+    
+    
 
-        A_matrices.append(me.A.reshape(me.A.shape[0], -1).copy())
 
-        
-        if e == epochs-10:
-            me.dec_temp = 0.1
-
-    return epoch_positions, A_matrices
+    return epoch_positions, A_matrices, cheeses, epoch_best_act_count
 
 
 if __name__ == "__main__":

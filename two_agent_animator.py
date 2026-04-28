@@ -300,7 +300,8 @@ class Matrix_Renderer:
     def update_matrix(self, obs_model):
         self.os_matrix = obs_model
 
-def animate(epoch_positions, cheeses, A_matrices, agent_worlds, epochs_beliefs, epochs_desires):
+def animate(epoch_positions, cheeses, A_matrices, agent_worlds, epochs_beliefs, epochs_desires,
+            desires_other_showtype):
     
 
     CELL_SIZE = 100
@@ -375,8 +376,15 @@ def animate(epoch_positions, cheeses, A_matrices, agent_worlds, epochs_beliefs, 
             for j in range(2):
                 for k in range(2):
                     for l in range(2):
-                        des_matrices.append(desires[m][j,k,l,:]*10)
-                        des_matrix_pos.append([ww+100*l+200*j+400*m,mh+200+100*k])
+                        if j == 1:
+                            if desires_other_showtype == "mean":
+                                des_matrices.append(desires[m][j][k,l,:]/np.sum(desires[m][j]))
+                                des_matrix_pos.append([ww+100*l+200*j+400*m,mh+200+100*k])
+                            else:
+                                assert 1/0, f"There is no other desires showtype implemented yet, only mean, but you set {desires_other_showtype}"
+                        else:
+                            des_matrices.append(desires[m][j][k,l,:]) #*10 here before, whyyy???
+                            des_matrix_pos.append([ww+100*l+200*j+400*m,mh+200+100*k])
                 
         dm_renderers = []
         for mp, m in zip(des_matrix_pos, des_matrices):
