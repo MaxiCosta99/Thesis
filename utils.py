@@ -136,15 +136,15 @@ def make_goals_two_agent(reward = float, punishment = float, beta = float, goal_
         
     elif goal_type == "obs":
 
-        agent0_goal_obs = np.ones(11)
+        agent0_goal_obs = np.ones(12)
         agent0_goal_obs[2] = rp
         agent0_goal_obs[3] = pp
         agent0_goal_obs = agent0_goal_obs/pp
         agent0_goal_obs_cat = agent0_goal_obs/np.sum(agent0_goal_obs)
 
-        agent1_goal_obs = np.ones(11)
-        agent1_goal_obs[7] = rp
-        agent1_goal_obs[8] = pp
+        agent1_goal_obs = np.ones(12)
+        agent1_goal_obs[9] = rp
+        agent1_goal_obs[10] = pp
         agent1_goal_obs = agent1_goal_obs/pp
         agent1_goal_obs_cat = agent1_goal_obs/np.sum(agent1_goal_obs)
 
@@ -702,7 +702,19 @@ def A_diff_plotter(true_A, learned_A):
     plt.show()
 
 
+def efe_eps_plotter(efe_eps):
+    efe_eps = np.array(efe_eps).T
 
+
+    fig, ax = plt.subplots()
+    labels = ["EFE down", "EFE up", "EFE left", "EFE right"]
+    for i in range(4):
+        ax.plot(efe_eps[i], label = labels[i])
+    ax.legend()
+    ax.set_xlabel("Episodes")
+    ax.set_ylabel("EFE")
+    plt.show()
+    
 
 
 

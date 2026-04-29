@@ -28,25 +28,24 @@ def pos_conv(pos):
 
 class agent:
   def __init__(self, A, B, s, U,
-               goal_states, goal_obs, reason_depth = int, dec_temp = float, chatty_boy = bool,
+               goal_states, reason_depth = int, dec_temp = float, chatty_boy = bool,
                little_o_imaginer = bool, o_prob_threshold = float,
                little_u_imaginer = bool, u_prob_threshold = float,
                agent_id = int, moves_to_go = int, social = bool, terms = list, sampling = str,
                branch_reductor = str, mc_samples = int, selfish = bool, empathetic = bool,
-               bayes_observe = bool, obs_model_given = bool, futuro_prosperoso = bool,
+               bayes_observe = bool, obs_model_given = bool, efe_discounting = str,
                random_moves = bool, det_dec_rule = bool, state_stabilizer = bool):
     if  obs_model_given == True:
         self.A = A
     else:
-        my_A = np.random.beta(10,1, (11,2,2,4,4)) #my observation model (a catagorical)
-        your_A = np.ones((11,2,2,4,4)) #your observation model (a dirichlet)
+        my_A = np.random.beta(10,1, A[0].shape) #my observation model (a catagorical)
+        your_A = np.ones(A[1].shape) #your observation model (a dirichlet)
         self.A = np.stack((my_A, your_A), axis = 0)
 
     self.s = s #[my/your belief, agent0cheese, agent1cheese, agent0pos, agetn1pos]
     self.B = B
     self.U = U
     self.goal_states = goal_states #[my/your]
-    self.goal_obs = goal_obs
     self.reason_depth = reason_depth
     self.chatty_boy = chatty_boy
     self.dec_temp = dec_temp
@@ -72,13 +71,15 @@ class agent:
                               }
 
     self.bayes_observe = bayes_observe
-    self.futuro_prosperoso = futuro_prosperoso
+    self.efe_discounting= efe_discounting
 
 
 
     self.true_A = A
 
     self.state_stabilizer = state_stabilizer
+
+
 
     if len(self.terms) == 0:
         self.random_moves = True
@@ -98,6 +99,26 @@ class agent:
     assert self.reason_depth >= 1, f"My man you want to do thinking depth of: {self.reason_depth}?"
     assert self.moves_to_go >= 1, f"You can always move"
 
+
+  def discount_EFE(self, EFE, current_depth):
+
+      if self.efe_discounting == "total":
+          EFE = 0
+
+      elif self.efe_discounting == "new":
+          if current_depth == 1:
+              EFE = EFE
+          if current_depth == 2:
+              EFE = EFE
+          if current_depth == 3:
+              EFE = EFE
+
+      elif self.efe_discounting == "default":
+          EFE = EFE
+      else:
+          assert 1/0, f"What the shid?"
+
+      return EFE
 
 
   def acting_randomly(self, new_action_type):
@@ -658,6 +679,9 @@ class agent:
 
     risk = np.dot(s_flat, temp1)
 
+    assert risk >= 0, f"The risk should be non negative, but instead is {risk}"
+    
+
     #print(f"This is the risk: {risk}")
     return risk
 
@@ -694,17 +718,16 @@ class agent:
     A_probs = self.A[who]/np.sum(self.A[who], axis = 0)
     po = np.einsum("ijklo, jklo -> i", A_probs, self.s[who])
 
-    #print(f"This is the dist of the imagined obs: \n {po}")
-
     assert abs(np.sum(po)-1) < 0.01, f"probs sum to {np.sum(po)}"
 
-    temp = np.divide(po, self.goal_obs[who])
+    temp = np.divide(po, self.goal_states[who])
     temp1 = np.where(temp != 0, np.log(temp), 0)
 
     #temp1 = np.log(temp, where=(temp != 0), out=np.zeros_like(temp))
 
     risk_obs = np.dot(po, temp1)
 
+    assert risk_obs >= 0, f"The risk should be non negative, but instead is {risk_obs}"
     
     return risk_obs
 
@@ -745,7 +768,7 @@ class agent:
       for u in self.U:
         pu[u] = self.compute_EFE(u, who)
 
-
+  
       pu = softmax(pu,1)
 
       if self.branch_reductor == "cut":
@@ -763,7 +786,6 @@ class agent:
       u_imagined = self.U
       pu_imagined = np.ones(len(u_imagined))/len(u_imagined)
 
-    
     assert len(u_imagined) >0, "No action was imagined"
     assert abs(np.sum(pu_imagined)-1)<0.01,f"Actions probabilities sum to {np.sum(pu_imagined)}"
 
@@ -774,11 +796,14 @@ class agent:
     
     if who == 1:
         u, H = self.SFE_call_other()
-    
+
     else:
         assert 1/0, f"This should not happen, never call sop_imagine_u on yourself"
 
     pu = softmax(H, 1)
+
+    #print(f"these are the actions imagined by {self.agent_id} regarding {who} \n {u}\n  with their probs \n {pu}")
+   
 
     if self.little_u_imaginer == True:
 
@@ -814,6 +839,7 @@ class agent:
     A_norm = self.A[who]/np.sum(self.A[who], axis = 0)
     po = np.einsum("ijklm, jklm -> i", A_norm, self.s[who])
 
+
     if self.little_o_imaginer == True:
 
         if self.branch_reductor == "cut":
@@ -823,7 +849,7 @@ class agent:
 
             if len(o_imagined) == 0:
                 o_imagined = np.random.choice(self.A[who].shape[0], size = 1, p = po)
-                po_imagined = [1]
+                po_imagined = np.array([1])
             
         elif self.branch_reductor == "sample":
             o_imagined = np.random.choice(self.A[who].shape[0], size = 1, p = po)
@@ -839,6 +865,25 @@ class agent:
 
     assert abs(np.sum(self.s[who])-1)<0.01, f"States probs sum to {np.sum(self.s[who])}"
     assert abs(np.sum(po_imagined)-1)<0.01, f"Observation probs sum to {np.sum(po_imagined)}"
+
+    
+    if self.agent_id == 0:
+        if who == 0:
+            po_imagined = po_imagined[o_imagined<=4]
+            o_imagined = o_imagined[o_imagined<=4]
+        else:
+            po_imagined = po_imagined[o_imagined>4]
+            o_imagined = o_imagined[o_imagined>4]
+    else:
+        if who == 0:
+            po_imagined = po_imagined[o_imagined>4]
+            o_imagined = o_imagined[o_imagined>4]
+        else:
+            po_imagined = po_imagined[o_imagined<=4]
+            o_imagined = o_imagined[o_imagined<=4]
+
+    po_imagined = po_imagined/np.sum(po_imagined)
+
 
     return o_imagined, po_imagined
 
@@ -865,14 +910,22 @@ class agent:
 
         u_imagined, pu_imagined = self.imagine_u(who)
 
+        """if who == 0:
+            print(f"These are the imagined u by {self.agent_id} regarding {who} with their probabilities: \n {u_imagined} \n {pu_imagined}")
+        """
+
         H = np.zeros(len(u_imagined))
 
-        cp = self.s.copy()
+        
         for i,u in enumerate(u_imagined):
 
           H[i]=self.compute_EFE(u,who)
 
+          H[i] = self.discount_EFE(H[i], current_depth)
+
           if current_depth < self.reason_depth:
+            cp = self.s.copy()
+
             if self.social == True:
               
               if who == 0:
@@ -887,10 +940,8 @@ class agent:
               self.act(u)
               future_EFE = self.SFEr(current_depth + 1, who = 0)
             
-            if self.futuro_prosperoso == True:
-                H[i] = future_EFE #PORCA TROIA PER N TAB NO JIVA NIA PLU DUTA STA MERDA
-            else:
-                H[i] = future_EFE + H[i]
+            
+            H[i] = future_EFE + H[i]
             self.s = cp.copy()
     
         us.append(u_imagined)
@@ -933,6 +984,10 @@ class agent:
 
 
     o_imagined, po_imagined = self.imagine_o(who)
+    """
+    if current_depth == 2:
+        print(f"These are the observations imagined by {self.agent_id} regarding {who} \n {o_imagined} \n {po_imagined}")
+    """
     Hro = np.zeros(len(o_imagined))
 
     cp1 = self.s.copy()
@@ -942,11 +997,14 @@ class agent:
       u_imagined, _ = self.imagine_u(who)
       Hrou = np.zeros(len(u_imagined))
 
-      cp2 = self.s.copy()
+      
       for j,u in enumerate(u_imagined):
 
         Hrou[j] = self.compute_EFE(u,who)
 
+        Hrou[j] = self.discount_EFE(Hrou[j], current_depth)
+        
+        cp2 = self.s.copy()
         if current_depth < self.reason_depth:
 
           if who == 0:
@@ -957,10 +1015,7 @@ class agent:
             self.act_other(u)
             future_EFE = self.SFEr(current_depth + 1, who = who)
 
-          if self.futuro_prosperoso == True:
-              Hrou[j] = future_EFE
-          else:
-              Hrou[j] = future_EFE + Hrou[j]
+          Hrou[j] = future_EFE + Hrou[j]
           self.s = cp2.copy()
 
       
@@ -985,8 +1040,12 @@ class agent:
 
 
   def SFEr2(self, current_depth = int):
-
+    
     o_imagined, po_imagined = self.imagine_o(0) #0 is I imagine
+    """if current_depth == 2:
+        print(f"These are the observations imagined by {self.agent_id} regarding {0} at depth {current_depth}: \n {o_imagined} \n {po_imagined} ")
+    """
+
     Hro = np.zeros(len(o_imagined))
 
     cp1 = self.s.copy()
@@ -996,6 +1055,11 @@ class agent:
       self.observe(o,1)
 
       up_imagined, pup_imagined = self.sop_imagine_u(1)
+      
+      """if current_depth == 2:
+          print(f"These are the actions imagined by {self.agent_id} regarding {1} at depth {current_depth}: \n {up_imagined} \n {pup_imagined} ")
+      """
+
       Hup = np.zeros(len(up_imagined))
 
       cp2 = self.s.copy()
@@ -1018,16 +1082,16 @@ class agent:
 
             Hropu[l] = self.compute_EFE(u,0)
 
+            Hropu[l] = self.discount_EFE(Hropu[l], current_depth)
+
+
             if current_depth < self.reason_depth:
               cp4 = self.s.copy()
               self.act(u)
 
               future_EFE = self.SFEr2(current_depth + 1)
-              if self.futuro_prosperoso == True:
-                  Hropu[l] = future_EFE
-              else:
-                  Hropu[l] = future_EFE + Hropu[l]
-              
+
+              Hropu[l] = future_EFE + Hropu[l]
               self.s = cp4.copy()
 
           Hrop[k] = np.dot(softmax(Hropu, 1), Hropu)
@@ -1035,11 +1099,18 @@ class agent:
 
         Hup[j] = np.dot(pop_imagined, Hrop)
         self.s = cp2.copy()
-
+      """if current_depth == 2:
+          print(f"These are the EFES of each action imagined by {self.agent_id} regarding {1} \n {Hup} ")
+      """
       Hro[i] = np.dot(pup_imagined, Hup)
       self.s = cp1.copy()
 
+    """if current_depth == 2:
+        print(f"This are the EFES of each observation imagined by {self.agent_id} regarding {0} \n {Hro}")"""
     future_EFE = np.dot(po_imagined, Hro)
+
+    """if current_depth == 2:
+        print(f"This is the future efe of the action considered {future_EFE}")"""
 
     return future_EFE
 
@@ -1053,7 +1124,6 @@ class agent:
           assert len(u_imagined) > 0, "No action imagined"
 
           if self.det_dec_rule == True:
-
               action = u_imagined[np.argmin(H)]
       
           else:
@@ -1063,12 +1133,23 @@ class agent:
       
       else:
           action = np.random.choice(self.U)
+          
+          u_imagined = None 
 
     
       self.moves_to_go = self.moves_to_go - 1
       self.change_reason_depth()
 
-      return action
+      #print(f"this is the action taken: {action}")
+
+      if u_imagined is None:
+          H_extended = np.zeros(4)
+      else:
+          H_extended = np.zeros(4)
+          H_extended[u_imagined] = H
+
+
+      return action, H_extended
   
   def explore(self):
 
@@ -1147,20 +1228,20 @@ class world:
         elif self.cheese_positions[0] == 0 and self.cheese_positions[1] == 1:
           o = 6
         elif self.cheese_positions[0] == 1 and self.cheese_positions[1] == 0:
-          o = 9
+          o = 7
         elif self.cheese_positions[0] == 1 and self.cheese_positions[1] == 1:
-          o = 10 #both cheeses on the right
+          o = 8 #both cheeses on the right
 
         """o = self.cheese_positions[0] #which can be either 0 or 1 THIS OR THE PART ABOVE"""
 
 
       elif (self.true_s[2,1] == 1 and self.cheese_positions[1] == 0) or (self.true_s[3,1] == 1 and self.cheese_positions[1] == 1):
-        o = 7 #agent 1 on the cheese
+        o = 9 #agent 1 on the cheese
       elif (self.true_s[2,1] == 1 and self.cheese_positions[1] == 1) or (self.true_s[3,1] == 1 and self.cheese_positions[1] == 0):
-        o = 8 #agent 1 not on the cheese
+        o = 10 #agent 1 not on the cheese
 
       else:
-        o = 4 #no observation for anybody
+        o = 11 #no observation for anybody
 
     return o
 
@@ -1169,6 +1250,7 @@ class world:
     
     self.true_s = np.zeros((4,2))
     self.true_s[0,:] = 1
+
 
 
 def true_A(base, pretrain_strength = float, other_strength = float):
@@ -1241,6 +1323,80 @@ def true_A(base, pretrain_strength = float, other_strength = float):
 
     return agent0_A, agent1_A
 
+
+def true_A_new(base, pretrain_strength = float, other_strength = float):
+
+    
+    agent0_A = np.ones((12,2,2,4,4))*base
+
+    agent0_A[0,0,:,1,:] = pretrain_strength
+
+    agent0_A[1,1,:,1,:] = pretrain_strength
+
+    agent0_A[2,0,:,2,:] = pretrain_strength
+    agent0_A[2,1,:,3,:] = pretrain_strength
+
+    agent0_A[3,1,:,2,:] = pretrain_strength
+    agent0_A[3,0,:,3,:] = pretrain_strength
+
+    agent0_A[4,:,:,0,:] = pretrain_strength
+
+    agent0_A[5,0,0,:,1] = other_strength
+
+    agent0_A[6,0,1,:,1] = other_strength
+
+    agent0_A[7,1,0,:,1] = other_strength
+
+    agent0_A[8,1,1,:,1] = other_strength
+
+    agent0_A[9,:,0,:,2] = other_strength
+    agent0_A[9,:,1,:,3] = other_strength
+
+    agent0_A[10,:,0,:,3] = other_strength
+    agent0_A[10,:,1,:,2] = other_strength
+
+    agent0_A[11,:,:,:,0] = other_strength
+
+
+
+
+    agent1_A = np.ones((12,2,2,4,4))*base
+
+    agent1_A[0,0,:,1,:] = other_strength
+
+    agent1_A[1,1,:,1,:] = other_strength
+
+    agent1_A[2,0,:,2,:] = other_strength
+    agent1_A[2,1,:,3,:] = other_strength
+
+    agent1_A[3,1,:,2,:] = other_strength
+    agent1_A[3,0,:,3,:] = other_strength
+
+    agent1_A[4,:,:,0,:] = other_strength
+
+    agent1_A[5,0,0,:,1] = pretrain_strength
+
+    agent1_A[6,0,1,:,1] = pretrain_strength
+
+    agent1_A[7,1,0,:,1] = pretrain_strength
+
+    agent1_A[8,1,1,:,1] = pretrain_strength
+
+    agent1_A[9,:,0,:,2] = pretrain_strength
+    agent1_A[9,:,1,:,3] = pretrain_strength
+
+    agent1_A[10,:,0,:,3] = pretrain_strength
+    agent1_A[10,:,1,:,2] = pretrain_strength
+
+    agent1_A[11,:,:,:,0] = pretrain_strength
+
+    agent0_A = norm_om(agent0_A)
+    agent1_A = norm_om(agent1_A)
+
+
+    return agent0_A, agent1_A
+
+
 def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_beliefs = np.array,
         exploration_phase = bool, A_learning = bool,
         infer_only_on_last_action = bool, opt_params = dict, acclimatization_episodes = int):
@@ -1274,42 +1430,15 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
   for i in range(epochs):
       cheeses.append([np.random.randint(0,2), np.random.randint(0,2)])
 
-  
+
+  epochs_efes = []
+
+
 
   for e in range(epochs):
     print("__________________________________")
     print("Starting epoch: " + str(e))
     print("__________________________________")
-
-
-    if e < acclimatization_episodes:
-        agent0.agent_id = 0
-        agent1.agent_id = 1
-        nr_moves = 50
-        agent0.random_moves = True
-        agent0.moves_to_go = nr_moves
-        agent1.random_moves = True
-        agent1.moves_to_go = nr_moves
-
-    else:
-        if exploration_phase == True:
-            where_are_you = np.random.randint(0,2)
-            agent0.change_environment(where_are_you)
-            agent1.change_environment(abs(where_are_you-1))
-
-        if agent0.agent_id == 0:
-            nr_moves = 3
-            agent0.random_moves = False
-            agent0.moves_to_go = nr_moves
-            agent1.random_moves = False
-            agent1.moves_to_go = nr_moves
-
-        else:
-            nr_moves = 30
-            agent0.random_moves = True
-            agent0.moves_to_go = nr_moves
-            agent1.random_moves = True
-            agent1.moves_to_go = nr_moves
 
 
     epochs_agent_worlds.append((agent0.agent_id, agent1.agent_id))
@@ -1325,26 +1454,28 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
     beliefs = []
     agentselfposA = []
     agentselfposB = []
-    
-    agent0_acts = []
-    agent1_acts = []
-    agent0_obs = []
-    agent1_obs = []
-
 
 
     beliefs.append((agent0.s.copy(),agent1.s.copy()))
 
 
+    nr_moves = 3
+    agent0.random_moves = False
+    agent0.moves_to_go = nr_moves
+    agent1.random_moves = False
+    agent1.moves_to_go = nr_moves
 
     for k in range(nr_moves):
 
       if agent0.agent_id == 0: #if agent0 in env 1 he explores, if agent1 in env 0 he explores
 
-    
-        u = agent0.pick_action()
+        u, H = agent0.pick_action()
         agent0.act(u)
         agent1.act_other(u)
+
+
+        if k == 0:
+            efes = H
         
 
         w.change_true_s(agent0, u)
@@ -1352,7 +1483,6 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
         
         positions.append(pos_conv(w.true_s))
         agentselfposA.append(agent0.s.copy())
-     
 
         
         agent0.observe(o,0)
@@ -1360,27 +1490,22 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
         agent1.observe(o,0)
         agent1.observe(o,1)
 
+
         beliefs.append((agent0.s.copy(),agent1.s.copy()))
         
-        agent0_acts.append(u)
-        agent0_obs.append(o)
-        agent1_acts.append(u)
-        agent1_obs.append(o)
+   
         
 
         
-        u = agent1.pick_action()
-        #u = 0
-
+        u, _ = agent1.pick_action()
 
         agent1.act(u)
         agent0.act_other(u)
         
-        #print("This is the action taken by agent 1: " + str(u))
 
         w.change_true_s(agent1, u)
         o = w.give_o(agent1)
-        #print(f"This is the observation given by the world: {o}")
+   
         positions.append(pos_conv(w.true_s))
         agentselfposB.append(agent1.s.copy())
     
@@ -1392,10 +1517,6 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
           
         beliefs.append((agent0.s.copy(),agent1.s.copy()))
 
-        agent0_acts.append(u+4)
-        agent0_obs.append(o)
-        agent1_acts.append(u+4)
-        agent1_obs.append(o)
 
 
 
@@ -1409,11 +1530,10 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
                 agent0.update_goals_other(u, beliefs[-2][0], opt_params) #use my beliefs about his beliefs before that we acted
             
             
-        
-        #print(f"This is the beliefs of agent 0 after observing: {agent0.s}")
-        #print(f"This is the beliefs of agent 1 after observing: {agent1.s}")
+    
 
       else:
+        1/0, f"Don't use this, exploration phase is now dead!!!"
 
         u = agent0.explore()
         agent0.act(u)
@@ -1461,133 +1581,92 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
         agent1_acts.append(u)
         agent1_obs.append(o)
 
-
-
-    """NOT USED ANYMORE
-    if A_learning == True:
-        for (o,s) in zip(observationsA, agentselfposA):
-            if agent0.agent_id == 0:
-              agent0.update_A(o,s,who=0)
-            else:
-              agent0.update_A(o,s,who=1)
-
-        for (o,s) in zip(observationsB, agentselfposB):
-            if agent1.agent_id == 1:
-              agent1.update_A(o,s,who=0)
-            else:
-              agent1.update_A(o,s,who=1)"""
-
-    """
-    if A_learning == True:
-        if agent0.agent_id == 0:
-            epochs_observations0["lw"].append(agent0_obs)
-            epochs_actions0["lw"].append(agent0_acts)
-                
-            A, _ = EM(epochs_observations0["lw"],
-                        epochs_actions0["lw"],
-                        agent0.B.copy(),
-                        A_param_shape = (11,2,4),
-                        s_param_shape = (2,4),
-                        gm = None, start = None, end = None)
-
-            true_A = np.einsum("ijklo -> ijl", agent0.true_A[0].copy())
-
-            if agent0.state_stabilizer == True:
-                A = state_switcher(learned_A = A, true_A = true_A)
-            else:
-                A = np.reshape(A, true_A.shape)
     
-            
-            temp = np.repeat(A[:,:,np.newaxis,:,np.newaxis], axis = 2, repeats = 2)
-            temp = np.repeat(temp, axis = 4, repeats = 4)/8 #need to do this to keep dirichlet count proper
-            agent0.A[0] = temp.copy()
-
-
-            epochs_observations1["rw"].append(agent1_obs)
-            epochs_actions1["rw"].append(agent1_acts)
-            A, _ = EM(epochs_observations1["rw"],
-                        epochs_actions1["rw"],
-                        agent1.B.copy(),
-                        A_param_shape = (11,2,4),
-                        s_param_shape = (2,4),
-                        gm = None, start = None, end = None)
-
-            true_A = np.einsum("ijklo -> iko", agent1.true_A[0].copy())
-
-            if agent1.state_stabilizer == True:
-                A = state_switcher(learned_A = A, true_A = true_A)
-            else:
-                A = np.reshape(A, true_A.shape, order = "C")
-
-            
-            temp = np.repeat(A[:,np.newaxis,:,np.newaxis,:], axis = 1, repeats = 2)
-            temp = np.repeat(temp, axis = 3, repeats = 4)/8 #need to do this to keep dirichlet count proper
-            agent1.A[0] = temp.copy()
-
-
-        else:
-            epochs_observations0["rw"].append(agent0_obs)
-            epochs_actions0["rw"].append(agent0_acts)
-
-            A, _ = EM(epochs_observations0["rw"],
-                        epochs_actions0["rw"],
-                        agent0.B.copy(),
-                        A_param_shape = (11,4,2),
-                        s_param_shape = (4,2),
-                        gm = None, start = None, end = None)
-
-            true_A = np.einsum("ijklo -> iko", agent0.true_A[1].copy())
-
-            if agent0.state_stabilizer == True:
-                A = state_switcher(learned_A = A, true_A = true_A)
-            else:
-                A = np.reshape(A, true_A.shape, order = "C")
-            
-            temp = np.repeat(A[:,np.newaxis,:,np.newaxis,:], axis = 1, repeats = 2)
-            temp = np.repeat(temp, axis = 3, repeats = 4)/8 #need to do this to keep dirichlet count proper
-            agent0.A[1] = temp.copy()
+        
+    epochs_efes.append(efes)
 
 
 
-            epochs_observations1["lw"].append(agent1_obs)
-            epochs_actions1["lw"].append(agent1_acts)
-            A, _ = EM(epochs_observations1["lw"],
-                        epochs_actions1["lw"],
-                        agent1.B.copy(),
-                        A_param_shape = (11,4,2),
-                        s_param_shape = (4,2),
-                        gm = None, start = None, end = None)
-            
-            true_A = np.einsum("ijklo -> ijl", agent1.true_A[1].copy())
-
-            if agent1.state_stabilizer == True:
-                A = state_switcher(learned_A = A, true_A = true_A)
-            else:
-                A = np.reshape(A, true_A.shape, order = "C")
-            
-            temp = np.repeat(A[:,:,np.newaxis,:,np.newaxis], axis = 2, repeats = 2)
-            temp = np.repeat(temp, axis = 4, repeats = 4)/8 #need to do this to keep dirichlet count proper
-            agent1.A[1] = temp.copy()
-    """
+    agent0_acts = []
+    agent1_acts = []
+    agent0_obs = []
+    agent1_obs = []
     
-    epochs_observations0["lw"].append(agent0_obs)
-    epochs_actions0["lw"].append(agent0_acts)
-    epochs_observations1["rw"].append(agent1_obs)
-    epochs_actions1["rw"].append(agent1_acts)
+    nr_moves = 50
+    agent0.random_moves = True
+    agent0.moves_to_go = nr_moves
+    agent1.random_moves = True
+    agent1.moves_to_go = nr_moves
+
+    w = world(cheeses[e])
+    for k in range(nr_moves):
+
+        u = np.random.choice(agent0.U)
+        w.change_true_s(agent0, u)
+        o = w.give_o(agent0)
+
+        agent0_acts.append(u)
+        agent0_obs.append(o)
+        agent1_acts.append(u)
+        agent1_obs.append(o)
+
+
+        u = np.random.choice(agent1.U)
+        w.change_true_s(agent1, u)
+        o = w.give_o(agent1)
+
+        agent0_acts.append(u+4)
+        agent0_obs.append(o)
+        agent1_acts.append(u+4)
+        agent1_obs.append(o)
+
+
+
+    
 
 
     if A_learning == True:
+      
+        epochs_observations0["lw"].append(agent0_obs)
+        epochs_actions0["lw"].append(agent0_acts)
+        epochs_observations1["rw"].append(agent1_obs)
+        epochs_actions1["rw"].append(agent1_acts)
+        
         new_gm, [start, end, gm] = EM2(obs_eps = epochs_observations0["lw"],
                       acts_eps = epochs_actions0["lw"],
                       tm = agent0.B,
-                      A_param_shape = (11,2,2,4,4),
+                      A_param_shape = (12,2,2,4,4),
                       s_param_shape = (2,2,4,4),
                       gm = np.load("inits/ta_gm.npy"),
                       start = np.load("inits/ta_start.npy"),
                       end = np.load("inits/ta_end.npy"))
         agent0.A[0] = new_gm.copy()
+        agent1.A[0] = new_gm.copy()
+        agent0.A[1] = new_gm.copy()
+        agent1.A[1] = new_gm.copy()
+
+        print("I did a GM learning update")
 
         """
+        if e > acclimatization_episodes:   
+            epochs_observations0["rw"].append(agent0_obs)
+            epochs_actions0["rw"].append(agent0_acts)
+
+            new_gm, [start, end, gm] = EM2(obs_eps = epochs_observations0["rw"],
+                      acts_eps = epochs_actions0["rw"],
+                      tm = agent0.B,
+                      A_param_shape = (12,2,2,4,4),
+                      s_param_shape = (2,2,4,4),
+                      gm = np.load("inits/ta_gm.npy"),
+                      start = np.load("inits/ta_start.npy"),
+                      end = np.load("inits/ta_end.npy"))
+            agent0.A[1] = new_gm.copy()
+
+            print("I updated also the GM of the other")"""
+
+
+        """
+        
         new_KL = A_KL(agent0.true_A[0], new_gm)
         if new_KL < prev_best:
             prev_best = new_KL
@@ -1613,12 +1692,9 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
     epochs_desires.append((agent0.goal_states.copy(),agent1.goal_states.copy()))
 
 
-
-    #print(f"At the end of epoch {e}, agent0 A is: {agent0.A}")
-    #print(f"At the end of epoch {e}, agent1 A is: {agent1.A}")
   
 
-  return epochs_positions, epochs_A_matrices, epochs_agent_worlds, epochs_beliefs, epochs_desires, cheeses
+  return epochs_positions, epochs_A_matrices, epochs_agent_worlds, epochs_beliefs, epochs_desires, cheeses, epochs_efes
 
 
 def main():

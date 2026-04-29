@@ -77,7 +77,7 @@ class agent:
         else:
             self.det_dec_rule = False
 
-        implemented_terms = ["risk", "risk_obs", "nov", "abg"]
+        implemented_terms = ["risk", "risk_obs", "nov", "abg", "epi_value"]
         for term in self.terms:
             assert term in implemented_terms, f"{term} is not in the implemented list of: {implemented_terms}"
 
@@ -640,16 +640,9 @@ def run(me = agent, num_eps = int, start_beliefs = np.ndarray, reason_depth = in
 
         best_act_counter = 0
 
-        if e < acclimatization_episodes:
-            nr_moves = 10
-            me.random_moves = True
-            me.moves_to_go = nr_moves
-        else:
-            nr_moves = 3
-            me.random_moves = False
-            me.moves_to_go = nr_moves
-
-            
+        nr_moves = 3
+        me.random_moves = False
+        me.moves_to_go = nr_moves            
 
 
         for i in range(nr_moves):
@@ -665,22 +658,36 @@ def run(me = agent, num_eps = int, start_beliefs = np.ndarray, reason_depth = in
 
             
             positions.append(pos_conv(w.true_s))
+
+
+            if i < 2 and u == best_move[i]:
+                best_act_counter = best_act_counter + 1
+
+            elif cheeses[e] == 0 and i == 2 and u == 2:
+                best_act_counter = best_act_counter + 1
+            
+            elif cheeses[e] == 1 and i == 2 and u == 3:
+                best_act_counter = best_act_counter + 1
+
+
+
+        nr_moves = 10
+        me.random_moves = True
+        me.moves_to_go = nr_moves
+  
+        for i in range(nr_moves):
+            u = me.pick_action()
+            me.act(u)
+
+            w.change_true_s(u)
+
+            o = w.give_o()
+            me.observe(o)
+
+            
             acts.append(u)
             observations.append(o)
 
-
-            if e >= acclimatization_episodes:
-                if i < 2 and u == best_move[i]:
-                    best_act_counter = best_act_counter + 1
-
-                elif cheeses[e] == 0 and i == 2 and u == 2:
-                    best_act_counter = best_act_counter + 1
-                
-                elif cheeses[e] == 1 and i == 2 and u == 3:
-                    best_act_counter = best_act_counter + 1
-
-
-        
 
         epoch_positions.append(positions)
         epoch_obs.append(observations)

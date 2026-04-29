@@ -1,9 +1,9 @@
 import numpy as np
 import scipy
 
+a = np.array([1, 2, 3])
+b = np.array([6.7, 8, 3])
 
-test = np.array([[3,4,4],[1,2,3]])
-test1 = np.array([2,0])
-test1 = test1[:,np.newaxis]
+b = b[a<=4]
 
-print(test*test1)
+print(b)

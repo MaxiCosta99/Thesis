@@ -71,7 +71,7 @@ start_s = np.array([[0.5,0.5],[0,0],[0,0],[0,0]]).T
 def default():
     
     #world parameters
-    B = det_B
+    B = mdp_B
     obs_model_given = False
     nr_moves = 3
     reward = 2
