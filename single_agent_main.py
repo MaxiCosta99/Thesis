@@ -90,7 +90,7 @@ def default():
     u_prob_threshold = 0.1
     A_update_method = "EM_all_ep" #either "default", "EM_all_ep", "EM_current_ep"
     terms = ["risk_obs", "epi_value"]
-    sampling = "default" #either default or sample
+    sampling = "sample" #either default or sample
 
     infer_before_update_obs_model = True #not needed in this case
     state_stabilizer = False #not needed in this case

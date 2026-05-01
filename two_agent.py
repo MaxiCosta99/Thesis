@@ -34,9 +34,9 @@ class agent:
                agent_id = int, moves_to_go = int, social = bool, terms = list, sampling = str,
                branch_reductor = str, mc_samples = int, selfish = bool, empathetic = bool,
                bayes_observe = bool, obs_model_given = bool, efe_discounting = str,
-               random_moves = bool, det_dec_rule = bool, state_stabilizer = bool):
+               state_stabilizer = bool):
     if  obs_model_given == True:
-        self.A = A
+        self.A = A.copy()
     else:
         my_A = np.random.beta(10,1, A[0].shape) #my observation model (a catagorical)
         your_A = np.ones(A[1].shape) #your observation model (a dirichlet)
@@ -75,7 +75,7 @@ class agent:
 
 
 
-    self.true_A = A
+    self.true_A = A.copy()
 
     self.state_stabilizer = state_stabilizer
 
@@ -91,7 +91,7 @@ class agent:
     else:
         self.det_dec_rule = False
 
-    implemented_terms = ["risk", "risk_obs", "nov", "epi_value", "abg"]
+    implemented_terms = ["risk", "risk_obs"] #use "nov" and "abg" at your own risk, "epi_value" is not implemented
     for term in self.terms:
         assert term in implemented_terms, f"{term} is not in the implemented list of: {implemented_terms}"
 
@@ -120,14 +120,12 @@ class agent:
 
       return EFE
 
-
-  def acting_randomly(self, new_action_type):
-      self.random_moves = new_action_type
   
   def restart_agent(self, start_s, reason_depth, nr_moves):
       self.s = start_s.copy()
       self.reason_depth = reason_depth
       self.moves_to_go = nr_moves
+
 
   def sample(self, dcm):
       """
@@ -145,11 +143,13 @@ class agent:
       out = sample.reshape(dcm_shape)
       return out
 
+
   def SFE_call_other(self, sampled_goal = None):
 
       gcp = self.goal_states.copy()
+      acp = self.A.copy()
+      bcp = self.s.copy()
 
-      #print(sampled_goal.shape)
       if sampled_goal is None:
 
           if self.selfish == True:
@@ -173,14 +173,16 @@ class agent:
               sampled_goal = sampled_goal.reshape(self.goal_states[1].shape[1], self.goal_states[1].shape[3])
               
 
-      #sampled_goal = self.sample(self.goal_states.copy())
-      
+      self.A[1] = self.sample(self.A[1].copy()).copy()
+      self.s[1] = self.sample(self.s[1].copy()).copy()
       self.change_goals(new_goal_states = sampled_goal, who = 1)
 
 
       actions, actions_H = self.SFE(1)
 
       self.goal_states = gcp.copy()
+      self.A = acp.copy()
+      self.s = acp.copy()
       
       return actions, actions_H
 
@@ -768,7 +770,6 @@ class agent:
       for u in self.U:
         pu[u] = self.compute_EFE(u, who)
 
-  
       pu = softmax(pu,1)
 
       if self.branch_reductor == "cut":
@@ -802,7 +803,7 @@ class agent:
 
     pu = softmax(H, 1)
 
-    #print(f"these are the actions imagined by {self.agent_id} regarding {who} \n {u}\n  with their probs \n {pu}")
+    #print(f"these are the actions imagined by {self.agent_id} regarding {who} \n {u}\n  with their EFE \n {H}")
    
 
     if self.little_u_imaginer == True:
@@ -831,7 +832,7 @@ class agent:
     assert abs(np.sum(pu_imagined)-1) < 0.01, f"probabilities of actions sum to {np.sum(pu_imagined)}"
   
 
-    return u_imagined, pu_imagined
+    return u_imagined, pu_imagined, H
 
 
   def imagine_o(self, who = int):
@@ -922,6 +923,10 @@ class agent:
           H[i]=self.compute_EFE(u,who)
 
           H[i] = self.discount_EFE(H[i], current_depth)
+
+          """if who == 0:
+              print(f"\n I am considering {who} did action {u} as first move")
+          """
 
           if current_depth < self.reason_depth:
             cp = self.s.copy()
@@ -1042,7 +1047,9 @@ class agent:
   def SFEr2(self, current_depth = int):
     
     o_imagined, po_imagined = self.imagine_o(0) #0 is I imagine
-    """if current_depth == 2:
+
+    """
+    if current_depth == 2:
         print(f"These are the observations imagined by {self.agent_id} regarding {0} at depth {current_depth}: \n {o_imagined} \n {po_imagined} ")
     """
 
@@ -1050,15 +1057,20 @@ class agent:
 
     cp1 = self.s.copy()
     for i,o in enumerate(o_imagined):
+      
+      """if current_depth == 2:
+          print(f"I am considering {1} observed {o} at step 2 ")"""
 
       self.observe(o,0)
       self.observe(o,1)
 
-      up_imagined, pup_imagined = self.sop_imagine_u(1)
+      up_imagined, pup_imagined, H = self.sop_imagine_u(1)
       
-      """if current_depth == 2:
+      if current_depth == 2:
+          """
           print(f"These are the actions imagined by {self.agent_id} regarding {1} at depth {current_depth}: \n {up_imagined} \n {pup_imagined} ")
-      """
+          print(f"And these are the relative action efes \n {H}")
+          print(f"_____________")"""
 
       Hup = np.zeros(len(up_imagined))
 
@@ -1470,10 +1482,13 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
       if agent0.agent_id == 0: #if agent0 in env 1 he explores, if agent1 in env 0 he explores
 
         u, H = agent0.pick_action()
+
+      
+
         agent0.act(u)
         agent1.act_other(u)
 
-
+        
         if k == 0:
             efes = H
         
@@ -1582,7 +1597,7 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
         agent1_obs.append(o)
 
     
-        
+    
     epochs_efes.append(efes)
 
 
@@ -1640,10 +1655,10 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
                       gm = np.load("inits/ta_gm.npy"),
                       start = np.load("inits/ta_start.npy"),
                       end = np.load("inits/ta_end.npy"))
-        agent0.A[0] = new_gm.copy()
+        agent0.A[0] = new_gm.copy() #agent0.true_A[0].copy()+1e-10#new_gm.copy()
         agent1.A[0] = new_gm.copy()
-        agent0.A[1] = new_gm.copy()
-        agent1.A[1] = new_gm.copy()
+        agent0.A[1] = new_gm.copy()#agent0.true_A[1].copy()+1e-10
+        #agent1.A[1] = agent1.true_A[1].copy()#new_gm.copy()
 
         print("I did a GM learning update")
 
@@ -1664,10 +1679,10 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
 
             print("I updated also the GM of the other")"""
 
-
+      
+       
         """
-        
-        new_KL = A_KL(agent0.true_A[0], new_gm)
+        new_KL = A_KL(agent0.true_A[1], new_gm)
         if new_KL < prev_best:
             prev_best = new_KL
             np.save("inits/ta_start", start)

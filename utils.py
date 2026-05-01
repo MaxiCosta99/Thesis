@@ -212,27 +212,15 @@ def Estep(obs_eps, acts_eps, start, end, tm, gm):
 
         inf_states = unnorm_inf_states/np.sum(unnorm_inf_states, axis = 1, keepdims = True)
 
-        """
-        lx = np.sum(inf_states[:,0:4], axis = 1)
-        rx = np.sum(inf_states[:,4:8], axis = 1)
-
-        conditions = lx>rx
- 
-
-        for cond, state in zip(conditions, inf_states):
-            if cond:
-                state[4:] = 0
-            else:
-                state[:4] = 0"""
-
-
-        #inf_states_eps[i] = inf_states
+       
         inf_states_eps.append(inf_states)
 
     return inf_states_eps
 
 
-def Mstep(inf_states_eps, gm, obs_eps):
+def Mstep(inf_states_eps, obs_eps, flat_gm_shape):
+
+    gm = np.zeros(flat_gm_shape)
     
     for inf_states, obs in zip(inf_states_eps, obs_eps): 
         for i in range(inf_states.shape[0]-1):
@@ -247,13 +235,15 @@ def Mstep(inf_states_eps, gm, obs_eps):
 
 
 
-def unnorm_Mstep(inf_states_eps, gm, obs_eps):
+def unnorm_Mstep(inf_states_eps, obs_eps, flat_gm_shape):
+
+    gm = np.zeros(flat_gm_shape)
     
     for inf_states, obs in zip(inf_states_eps, obs_eps): 
         for i in range(inf_states.shape[0]-1):
             gm[obs[i]] = gm[obs[i]] + inf_states[i+1]
 
-    unnorm_gm = gm
+    unnorm_gm = gm+1e-12
 
     return unnorm_gm
 
@@ -309,15 +299,22 @@ def EM(obs_eps, acts_eps, tm_unres, A_param_shape, s_param_shape, gm = None, sta
         gm = gm_sample/np.sum(gm_sample, axis = 0, keepdims = True)
 
         assert np.allclose(np.sum(gm, axis = 0),1)
+
         gm_shape = gm.shape
+
         gm = gm.reshape(gm.shape[0], -1)
+        flat_gm_shape = gm.shape
 
     else:
         gm_sample = gm
         gm = gm
         gm = gm/np.sum(gm, axis = 0, keepdims = True)
+
         gm_shape = gm.shape
+
         gm = gm.reshape(gm.shape[0],-1)
+
+        flat_gm_shape = gm.shape
 
 
     agent_gm = gm.copy() #which dirichlet GM the agent updates, for now the random start
@@ -329,10 +326,10 @@ def EM(obs_eps, acts_eps, tm_unres, A_param_shape, s_param_shape, gm = None, sta
         
         inf_states = Estep(obs_eps, acts_eps, start, end, tm, gm)
 
-        gm = Mstep(inf_states, gm, obs_eps)
+        gm = Mstep(inf_states, obs_eps, flat_gm_shape)
 
 
-    gm = unnorm_Mstep(inf_states, agent_gm, obs_eps)
+    gm = unnorm_Mstep(inf_states, obs_eps, flat_gm_shape)
 
     return gm, [start_sample, end_sample, gm_sample]
 
@@ -407,7 +404,7 @@ def Mstep2(inf_states_eps, obs_eps, gm_shape):
 
 
 
-def unnorm_Mstep2(inf_states_eps, obs_eps, gm_shape):
+def unnoised_Mstep2(inf_states_eps, obs_eps, gm_shape):
 
     gm = np.zeros(gm_shape)
     
@@ -415,7 +412,7 @@ def unnorm_Mstep2(inf_states_eps, obs_eps, gm_shape):
         for i in range(inf_states.shape[0]-1):
             gm[obs[i]] = gm[obs[i]] + inf_states[i+1]
 
-    unnorm_gm = gm
+    unnorm_gm = gm/np.sum(gm, axis = 0, keepdims = True)
 
     return unnorm_gm
 
@@ -452,7 +449,6 @@ def EM2(obs_eps, acts_eps, tm, A_param_shape, s_param_shape, gm = None, start = 
     agent_gm = gm.copy() #which dirichlet GM the agent updates, for now the random start
 
     gm_old = np.zeros(gm.shape)
-    #for _ in range(num_steps):
     while np.linalg.norm(gm - gm_old) > 0.001:
         gm_old = gm.copy()
         
@@ -461,7 +457,7 @@ def EM2(obs_eps, acts_eps, tm, A_param_shape, s_param_shape, gm = None, start = 
         gm = Mstep2(inf_states, obs_eps, gm_shape)
 
 
-    #gm = unnorm_Mstep2(inf_states, obs_eps, gm_shape)
+    gm = unnoised_Mstep2(inf_states, obs_eps, gm_shape)
 
     return gm, [start, end, gm]
 

@@ -1,9 +1,13 @@
 import numpy as np
 import scipy
+from two_agent import true_A_new
 
-a = np.array([1, 2, 3])
-b = np.array([6.7, 8, 3])
+y = true_A_new(0,1,1)
 
-b = b[a<=4]
+x = np.load("inits/ta_learnedA.npy")
 
-print(b)
+terms = "jklo -> ko"
+
+for i in range(12):
+
+    print(np.einsum(terms, y[1][i])-np.round(np.einsum(terms, x[i]),2))

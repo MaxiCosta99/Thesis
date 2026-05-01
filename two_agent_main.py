@@ -44,6 +44,9 @@ start_s[:,:,0,0] = [[0.25,0.25],[0.25,0.25]]
 full_start_s = np.repeat(start_s[np.newaxis,:,:,:,:],repeats = 2, axis =0)
 
 agent0_A, agent1_A = true_A_new(base = 0, pretrain_strength = 1.0, other_strength = 1.0) #TRUE A (0.1, 10,2) works
+#agent0_A = np.load("inits/ta_learnedA.npy").copy()
+#agent1_A = np.load("inits/ta_learnedA.npy").copy()
+
 
 agent0_full_A = np.stack((agent0_A, agent1_A), axis = 0) #[agent0_A, agent1_A]
 agent1_full_A = np.stack((agent1_A, agent0_A), axis = 0) #[agent1_A, agent0_A]
@@ -124,11 +127,12 @@ def default():
         num_samples = 1#np.random.randint(50,100)
         step_size = np.random.uniform(0.001,0.1)
         optimizer = "adam"
+        reg_strength = 0
 
 
         opt_params = {"natgrad" : False,
                         "log_space" : True,
-                        "reg_strength" : 0,
+                        "reg_strength" : reg_strength,
                         "beta1" : beta1,
                         "beta2" : beta2,
                         "num_iters" : num_iters,
@@ -141,8 +145,8 @@ def default():
         
         
         desires_other_showtype = "mean"
-        epochs = 2
-        acclimatization_episodes = 0
+        epochs = 1
+        acclimatization_episodes = 28
 
 
         agent0 = agent(agent0_full_A.copy(), B.copy(), copy.deepcopy(full_start_s), U = U.copy(), goal_states = copy.deepcopy(agent0_goals),
@@ -162,23 +166,22 @@ def default():
                 branch_reductor = branch_reductor1, mc_samples = mc_samples1, selfish = selfish1, empathetic = empathetic1,
                 bayes_observe = bayes_observe1, obs_model_given = obs_model_given, efe_discounting = efe_discounting1,
                 state_stabilizer = state_stabilizer1)
+  
 
-
-
+        
 
         epochs_positions, epochs_A_matrices, epochs_agent_worlds, epochs_beliefs, epochs_desires, cheeses, epochs_efes = run(agent0 = agent0, agent1 = agent1, epochs = epochs, nr_moves = nr_moves, reason_depth = reason_depth, start_beliefs = copy.deepcopy(full_start_s),
                                                                                                         exploration_phase = exploration, A_learning = A_learning, infer_only_on_last_action = infer_only_on_last_action,
                                                                                                         opt_params = opt_params, acclimatization_episodes = acclimatization_episodes)
         
+        """
         efe_eps_plotter(epochs_efes)
 
         print(A_KL(agent0_A, epochs_A_matrices[-1][0][0]))
         print(A_KL(agent1_A, epochs_A_matrices[-1][0][1]))
 
-
-        
         A_diff_plotter(agent0_A, epochs_A_matrices[-1][0][0])
-        A_diff_plotter(agent0_A, epochs_A_matrices[-1][0][1])
+        A_diff_plotter(agent0_A, epochs_A_matrices[-1][0][1])"""
 
         """animate(epochs_positions, cheeses, A_matrices = epochs_A_matrices, agent_worlds = epochs_agent_worlds, epochs_beliefs = epochs_beliefs, epochs_desires = epochs_desires,
         desires_other_showtype = desires_other_showtype)"""
