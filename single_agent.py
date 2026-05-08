@@ -36,7 +36,7 @@ class agent:
             self.A = A.copy()
         else:
             self.A = np.random.beta(10,1,(5,2,4)).copy()
-            #self.A = np.random.uniform(0,1,(5,4,2)).copy()
+            #self.A = np.random.uniform(0,1,(5,2,4)).copy()
         self.s = s
         self.B = B
         self.U = U
@@ -95,7 +95,7 @@ class agent:
 
 
 
-    def update_A(self, ep_observations, ep_states, ep_actions):
+    def update_A(self, ep_observations, ep_states, ep_actions, online_EM):
 
         old_A_shape = self.A.shape
 
@@ -107,12 +107,12 @@ class agent:
                 self.A[o,:] = self.A[o,:] + self.s
         
         if self.update_A_method == "EM_all_ep":
-            A, samples = EM(obs_eps = ep_observations, acts_eps = ep_actions, tm_unres = self.B.copy(), A_param_shape = (5,2,4), s_param_shape = (2,4), gm = self.EM_inits["gm"], start = self.EM_inits["start"], end = self.EM_inits["end"])
+            A, samples = EM(obs_eps = ep_observations, acts_eps = ep_actions, tm_unres = self.B.copy(), A_param_shape = (5,2,4), s_param_shape = (2,4), gm = self.EM_inits["gm"], start = self.EM_inits["start"], end = self.EM_inits["end"], online = online_EM)
          
 
         if self.update_A_method == "EM_current_ep":
             A, samples = EM(obs_eps = ep_observations[-1:], acts_eps = ep_actions[-1:], tm_unres = self.B.copy(), A_param_shape = self.A.shape, s_param_shape = self.s.shape, gm = self.A.copy(), start = None, end = None)
-         
+
 
         """
         #this is used in calls to learn optimal inits for the EM
@@ -236,10 +236,12 @@ class agent:
     def act(self, u):
       self.s = np.dot(self.B[u,:], self.s.T).T
 
-    def restart_agent(self, start_s, reason_depth, nr_moves):
+    def restart_agent(self, start_s, reason_depth, nr_moves, terms):
       self.s = start_s
       self.reason_depth = reason_depth
       self.moves_to_go = nr_moves
+      self.random_moves = False
+      self.terms = terms
 
     def compute_ambiguity(self):
       flat_A = np.reshape(self.A, (self.A.shape[0], self.A.shape[1]*self.A.shape[2]))
@@ -604,7 +606,8 @@ def pretrain(me: agent, epochs, start_s_beliefs, cheeses):
     return epoch_positions
 
 
-def run(me = agent, num_eps = int, start_beliefs = np.ndarray, reason_depth = int, nr_moves = int, acclimatization_episodes = int):
+def run(me = agent, num_eps = int, start_beliefs = np.ndarray, reason_depth = int, nr_moves = int,
+        A_learning = bool, intra_ep_A_learning = bool, nr_moves_A_learning = int, terms = list):
     
     epoch_positions = []
     epoch_acts = []
@@ -628,28 +631,21 @@ def run(me = agent, num_eps = int, start_beliefs = np.ndarray, reason_depth = in
         print(" ")
         print("__________________________________")
         print("New world: " + str(e))
-        me.restart_agent(start_beliefs, reason_depth, nr_moves)
+        me.restart_agent(start_beliefs, reason_depth, nr_moves, terms)
         w = world(cheeses[e])
         
         
-        observations = []
-        states = []
+      
+   
         positions = []
-        acts = []
 
-
-        best_act_counter = 0
-
-        nr_moves = 3
-        me.random_moves = False
-        me.moves_to_go = nr_moves            
+        best_act_counter = 0      
 
 
         for i in range(nr_moves):
             u = me.pick_action()
             me.act(u)
 
-            states.append(me.s)
 
             w.change_true_s(u)
 
@@ -671,37 +667,52 @@ def run(me = agent, num_eps = int, start_beliefs = np.ndarray, reason_depth = in
 
 
 
-        nr_moves = 10
-        me.random_moves = True
-        me.moves_to_go = nr_moves
+
+
+        if A_learning == True:
+
+            me.moves_to_go = nr_moves_A_learning
+
+            if intra_ep_A_learning == True:
+                me.terms = ["nov"]
+            else:
+               me.random_moves = True
+                
+            acts = []
+            observations = []
+            states = []
   
-        for i in range(nr_moves):
-            u = me.pick_action()
-            me.act(u)
+            for i in range(nr_moves_A_learning):
+                u = me.pick_action()
+                me.act(u)
 
-            w.change_true_s(u)
+                w.change_true_s(u)
 
-            o = w.give_o()
-            me.observe(o)
+                o = w.give_o()
+                me.observe(o)
 
+                
+                acts.append(u)
+                observations.append(o)
+
+                if intra_ep_A_learning == True:
+                    me.A = me.A.copy() + me.s.copy()
+
+
+                    
+        
+
+            epoch_obs.append(observations)
+            epoch_acts.append(acts)
+            epoch_states.append(states)
             
-            acts.append(u)
-            observations.append(o)
+            me.update_A(epoch_obs, epoch_states, epoch_acts, online_EM = False)
+
+
 
 
         epoch_positions.append(positions)
-        epoch_obs.append(observations)
-        epoch_acts.append(acts)
-        epoch_states.append(states)
         epoch_best_act_count.append(best_act_counter)
-
-
-
-        if me.obs_model_given == False:
-            me.update_A(epoch_obs, epoch_states, epoch_acts)
-
-            #print(f"This is the updated A: \n {np.round(np.reshape(me.A/np.sum(me.A, axis = 0), (me.A.shape[0], -1), order = "F"),2)}")
-
         if e < num_eps-1: #can not add the last matrix since there is no next action corr to it
             tempA = np.reshape(me.A.copy(), (me.A.shape[0], -1))
             A_matrices.append(tempA)

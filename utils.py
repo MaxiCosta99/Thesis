@@ -157,7 +157,7 @@ def make_goals_two_agent(reward = float, punishment = float, beta = float, goal_
         agent1_fullgoals = [agent1_goal_obs_cat, agent0_goal_obs]
 
         if uncertain_goals == True:
-            uncertain_goals = np.ones(11)
+            uncertain_goals = np.ones(12)
             agent0_fullgoals[1] = uncertain_goals
             agent1_fullgoals[1] = uncertain_goals
 
@@ -195,11 +195,8 @@ def backward(obs, acts, start, tm, gm):
     return backward_pass
 
 
-def Estep(obs_eps, acts_eps, start, end, tm, gm):
+def Estep(obs_eps, acts_eps, start, end, tm, gm, online):
 
-    num_eps = len(obs_eps)
-    num_visits = len(obs_eps[0])+1
-    num_states = gm.shape[1]
     
     #inf_states_eps = np.zeros((num_eps, num_visits, num_states))
     inf_states_eps = []
@@ -207,7 +204,12 @@ def Estep(obs_eps, acts_eps, start, end, tm, gm):
     for i, (obs, acts) in enumerate(zip(obs_eps, acts_eps)):
         
         fp = forward(obs, acts, start, tm, gm)
-        bp = backward(obs, acts, end, tm, gm)
+
+        if online == False:
+            bp = backward(obs, acts, end, tm, gm)
+        else:
+            bp = 1
+            
         unnorm_inf_states = fp*bp
 
         inf_states = unnorm_inf_states/np.sum(unnorm_inf_states, axis = 1, keepdims = True)
@@ -248,7 +250,7 @@ def unnorm_Mstep(inf_states_eps, obs_eps, flat_gm_shape):
     return unnorm_gm
 
 
-def EM(obs_eps, acts_eps, tm_unres, A_param_shape, s_param_shape, gm = None, start = None, end = None):
+def EM(obs_eps, acts_eps, tm_unres, A_param_shape, s_param_shape, gm = None, start = None, end = None, online = bool):
 
     
     tm = np.zeros((tm_unres.shape[0],2*tm_unres.shape[1], 2*tm_unres.shape[2]))
@@ -324,7 +326,7 @@ def EM(obs_eps, acts_eps, tm_unres, A_param_shape, s_param_shape, gm = None, sta
     while np.linalg.norm(gm - gm_old) > 0.001:
         gm_old = gm.copy()
         
-        inf_states = Estep(obs_eps, acts_eps, start, end, tm, gm)
+        inf_states = Estep(obs_eps, acts_eps, start, end, tm, gm, online)
 
         gm = Mstep(inf_states, obs_eps, flat_gm_shape)
 
@@ -559,8 +561,8 @@ def dir_VI(logl, data, prior, goal_learning_vars = dict, opt_params = dict):
             goal_learning_vars["v"] = v
             goal_learning_vars["t"] = t+1
 
-            m_hat = m / (1 - beta1**t)
-            v_hat = v / (1 - beta2**t)
+            m_hat = m# / (1 - beta1**t)
+            v_hat = v# / (1 - beta2**t)
 
             if optimizer == "momentum":
                 opt_grad = grad*m_hat
@@ -584,13 +586,7 @@ def dir_VI(logl, data, prior, goal_learning_vars = dict, opt_params = dict):
             if clipping == True:
                 grad = np.clip(grad, clips[0], clips[1])
             
-            #print(f"These are the pre opt gradients: \n {grad} ")
-            #print(f"this are the post opt gradients: \n {opt_grad}")
-
-            
-            #print(f"These are the old dirs in exp_space:\n  {phi}")
-            phi = phi + step_size * grad
-            #print(f"These are the new dirs in exp space: \n {phi}")
+            phi = phi + step_size * opt_grad
             var = np.exp(phi)
             
         else:
@@ -598,6 +594,9 @@ def dir_VI(logl, data, prior, goal_learning_vars = dict, opt_params = dict):
 
 
     
+    print(f"These are the new dirs in exp space: \n {np.round(phi,2)}")
+    print(f"These are the grads in exp space: \n {np.round(opt_grad, 2)}")
+    print(f"These are the non optimized grads in exp space: \n {np.round(grad,2)}")
 
     
     return var, goal_learning_vars

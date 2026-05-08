@@ -3,6 +3,9 @@ import copy
 from two_agent import agent, world, run, true_A, true_A_new
 from two_agent_animator import animate
 from utils import make_goals_two_agent, EM2, A_diff_plotter, efe_eps_plotter, A_KL
+import json
+import os
+from datetime import datetime
 
 
 det_B = np.array(([[[0,0,0,0],
@@ -63,10 +66,10 @@ mc_samples0 = 1000 #use in case branch reductor is MCTS (it's not really MCTS HE
 mc_samples1 = 100 #use in case branch reductor is MCTS
 
 little_o_imaginer = True
-o_prob_threshold = 0.1
+o_prob_threshold = 0.2
 
 little_u_imaginer = True
-u_prob_threshold = 0.1
+u_prob_threshold = 0.2
 
 
 def default():
@@ -74,17 +77,19 @@ def default():
         #world params
         B = mdp_B
         reward = 2 #for mdp_B I need 3, for det_B I need 2
-        punishment = 8 #for mdp_B i need 8, for det_B I need 5
+        punishment = 6#8 #for mdp_B i need 8, for det_B I need 5
         beta = 1
         goal_type = "obs" #default or obs
-        uncertain_goals = False
+        uncertain_goals = True
         agent0_goals, agent1_goals = make_goals_two_agent(reward = reward, punishment = punishment, beta = beta, goal_type = goal_type, uncertain_goals = uncertain_goals)
-        nr_moves = 10 # Doesnt matter now
+        nr_moves = 3
         obs_model_given = True #I am sorry for this
         A_learning = not obs_model_given
         exploration = False
 
-        #print(agent0_goals)
+        #agent0_goals[1] = np.exp(np.load("learned_goals/first_try.npy"))
+        #print(np.round(agent0_goals[0],2))
+        #print(np.round(np.log(agent0_goals[1]),2))
 
 
         #agent params
@@ -98,7 +103,7 @@ def default():
         terms0 = ["risk_obs"]
         terms1 = ["risk_obs"]
 
-        sampling0 = "mean"
+        sampling0 = "mean" #don't use sample for now!!!!
         sampling1 = "mean"
 
 
@@ -106,7 +111,7 @@ def default():
         selfish0 = False #to use only one world goal states
         selfish1 = False #to use only one world goal states
 
-        empathetic0 = False #to learn goals of other
+        empathetic0 = True  #to learn goals of other
         empathetic1 = False #to learn goals of ohter
 
 
@@ -120,14 +125,15 @@ def default():
 
 
 
-        infer_only_on_last_action = True
-        beta1 = np.random.uniform(0.8,0.9)
-        beta2 = np.random.uniform(0.9,1)
-        num_iters = 1#np.random.randint(100,300)
-        num_samples = 1#np.random.randint(50,100)
-        step_size = np.random.uniform(0.001,0.1)
-        optimizer = "adam"
+        infer_only_on_last_action = False
+        beta1 = 1 - 10 ** np.random.uniform(-2, -0.5)   # roughly 0.68 to 0.99
+        beta2 = 1 - 10 ** np.random.uniform(-4, -1)      # roughly 0.999 to 0.9
+        num_iters = 100#np.random.randint(10,100)
+        num_samples = 100#np.random.randint(10,100)
+        step_size = 0.01#10**(np.random.uniform(-4,-2))
+        optimizer = None
         reg_strength = 0
+        goal_learning_beta = 1
 
 
         opt_params = {"natgrad" : False,
@@ -140,13 +146,22 @@ def default():
                         "optimizer" : optimizer,
                         "clipping" : False,
                         "clips" : None,
-                        "step_size" : step_size}
+                        "step_size" : step_size,
+                        "infer_only_on_last_action" : infer_only_on_last_action}
 
-        
-        
+
+        """
+        os.makedirs("hyperparams", exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filepath = f"hyperparams/run_{timestamp}.json"
+
+        # Save at the start
+        with open(filepath, "w") as f:
+                json.dump({"hyperparams": opt_params}, f, indent=2)"""
+                
+
         desires_other_showtype = "mean"
-        epochs = 1
-        acclimatization_episodes = 28
+        epochs = 20
 
 
         agent0 = agent(agent0_full_A.copy(), B.copy(), copy.deepcopy(full_start_s), U = U.copy(), goal_states = copy.deepcopy(agent0_goals),
@@ -156,7 +171,7 @@ def default():
                 agent_id = 0, moves_to_go = nr_moves, social = social0, terms = terms0, sampling = sampling0,
                 branch_reductor = branch_reductor0, mc_samples = mc_samples0, selfish = selfish0, empathetic = empathetic0,
                 bayes_observe = bayes_observe0, obs_model_given = obs_model_given, efe_discounting = efe_discounting0,
-                state_stabilizer = state_stabilizer0)
+                state_stabilizer = state_stabilizer0, goal_learning_beta = goal_learning_beta)
 
         agent1 = agent(agent1_full_A.copy(), B.copy(), copy.deepcopy(full_start_s), U = U.copy(), goal_states = copy.deepcopy(agent1_goals),
                 reason_depth = reason_depth, dec_temp = dec_temp, chatty_boy = 0,
@@ -165,14 +180,26 @@ def default():
                 agent_id = 1, moves_to_go = nr_moves, social = social1, terms = terms1, sampling = sampling1,
                 branch_reductor = branch_reductor1, mc_samples = mc_samples1, selfish = selfish1, empathetic = empathetic1,
                 bayes_observe = bayes_observe1, obs_model_given = obs_model_given, efe_discounting = efe_discounting1,
-                state_stabilizer = state_stabilizer1)
+                state_stabilizer = state_stabilizer1, goal_learning_beta = goal_learning_beta)
   
-
         
-
         epochs_positions, epochs_A_matrices, epochs_agent_worlds, epochs_beliefs, epochs_desires, cheeses, epochs_efes = run(agent0 = agent0, agent1 = agent1, epochs = epochs, nr_moves = nr_moves, reason_depth = reason_depth, start_beliefs = copy.deepcopy(full_start_s),
                                                                                                         exploration_phase = exploration, A_learning = A_learning, infer_only_on_last_action = infer_only_on_last_action,
-                                                                                                        opt_params = opt_params, acclimatization_episodes = acclimatization_episodes)
+                                                                                                        opt_params = opt_params)
+        
+        
+        """
+        with open(filepath) as f:
+                run_data = json.load(f)
+
+        run_data["result"] = np.round(np.log(agent0.goal_states[1]),2).tolist()
+
+        with open(filepath, "w") as f:
+                json.dump(run_data, f, indent=2)"""
+
+                
+        
+        
         
         """
         efe_eps_plotter(epochs_efes)

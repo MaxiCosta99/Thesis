@@ -73,11 +73,15 @@ def default():
     #world parameters
     B = mdp_B
     obs_model_given = False
+    A_learning = not obs_model_given
+    nr_moves_A_learning = 10
+    intra_ep_A_learning = False
     nr_moves = 3
     reward = 2
     punishment = 6
     goal_type = "obs"
     goals = make_goals_single_agent(reward = reward, punishment = punishment, beta = 1, goal_type = goal_type)
+
 
 
 
@@ -90,7 +94,7 @@ def default():
     u_prob_threshold = 0.1
     A_update_method = "EM_all_ep" #either "default", "EM_all_ep", "EM_current_ep"
     terms = ["risk_obs", "epi_value"]
-    sampling = "sample" #either default or sample
+    sampling = "default" #either default or sample
 
     infer_before_update_obs_model = True #not needed in this case
     state_stabilizer = False #not needed in this case
@@ -102,9 +106,9 @@ def default():
 
 
     
-    #exp parameters
-    num_eps = 50
-    acclimatization_episodes = 25
+    #experiment parameters
+    num_eps = 20
+    
 
     maxi = agent(true_A.copy(), B.copy(), start_s.copy(), U = U, goal_states = goals.copy(),
             reason_depth = reason_depth, dec_temp = dec_temp, chatty_boy = 0,
@@ -115,7 +119,8 @@ def default():
             update_A_method = A_update_method, state_stabilizer = state_stabilizer, EM_inits = EM_inits,
             sampling = sampling)
 
-    agent_positions, A_matrices, cheeses, best_act_counts = run(maxi, num_eps, start_s, reason_depth, nr_moves, acclimatization_episodes)
+    agent_positions, A_matrices, cheeses, best_act_counts = run(maxi, num_eps, start_s, reason_depth, nr_moves,
+                                                                A_learning, intra_ep_A_learning, nr_moves_A_learning = nr_moves_A_learning, terms = terms)
 
 
     A_KL_plotter(true_A, A_matrices, best_act_counts)
