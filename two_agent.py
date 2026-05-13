@@ -567,7 +567,8 @@ class agent:
             print("Agent 0 cheese is on the right and Agent 1 cheese is on the right")
 
         #self.s = self.s/np.sum(self.s)
-
+    
+    assert abs(np.sum(self.s[who])-1) < 1e-4, f"The state probabilities of {self.agent_id} regarding {who} sum to {np.sum(self.s[who])} after seeing observation {o}"
 
   def act(self, u):
 
@@ -1459,7 +1460,7 @@ def true_A_new(base, pretrain_strength = float, other_strength = float):
 
 def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_beliefs = np.array,
         exploration_phase = bool, A_learning = bool,
-        infer_only_on_last_action = bool, opt_params = dict, nr_A_learning_moves = int):
+        infer_only_on_last_action = bool, opt_params = dict, nr_A_learning_moves = int, message_success_prob = float):
 
   prev_best = 100000
 
@@ -1470,17 +1471,17 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
   epochs_desires = []
   epochs_best_act_counts = []
   
-  epochs_observations0 = {"lw": [], #leftworld is the proper agent0 env
-                          "rw": []} #rightworld is the world of agent1
+  epochs_observations_agent_0 = {"0": [], #regarding agent 0
+                                 "1": []} #regarding agent 1
+  
+  epochs_actions_agent_0 = {"0": [],
+                            "1": []}
 
-  epochs_observations1 = {"lw": [],
-                          "rw": []}
+  epochs_observations_agent_1 = {"0": [],
+                                 "1": []}
 
-  epochs_actions0 = {"lw": [],
-                      "rw": []}
-
-  epochs_actions1 = {"lw": [],
-                      "rw": []}
+  epochs_actions_agent_1 = {"0": [],
+                            "1": []}
   
 
   epochs_A_matrices.append((agent0.A.copy(), agent1.A.copy()))
@@ -1512,20 +1513,19 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
     w = world(cheeses[e])
 
 
-    positions = []
-    beliefs = []
-    agentselfposA = []
-    agentselfposB = []
-
-
-    beliefs.append((agent0.s.copy(),agent1.s.copy()))
-
-
     best_act_counter0 = 0
     best_act_counter1 = 0
 
     pus0 = []
     pus1 = []
+
+    positions = []
+    beliefs = []
+    agentselfposA = []
+    agentselfposB = []
+
+    beliefs.append((agent0.s.copy(),agent1.s.copy()))
+
 
     for k in range(nr_moves):
 
@@ -1612,9 +1612,7 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
 
 
 
-
-
-
+        #learning the goals of the other
         if agent0.empathetic == True:
             
             agent0.goal_learning_beta = 1/(e+1)
@@ -1688,82 +1686,115 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
 
 
     
-
+    #learning the OM
     if A_learning == True:
         
-        agent0_acts = []
-        agent1_acts = []
-        agent0_obs = []
-        agent1_obs = []
-        
-        agent0.random_moves = True
-        agent0.moves_to_go = nr_A_learning_moves
-        agent1.random_moves = True
-        agent1.moves_to_go = nr_A_learning_moves
+        agent0_acts0 = []
+        agent0_acts1 = []
+        agent0_obs0 = []
+        agent0_obs1 = []
 
+        agent1_acts0 = []
+        agent1_acts1 = []
+        agent1_obs0 = []
+        agent1_obs1 = []
+        
 
         w = world(cheeses[e])
+
+        messaging_ep = np.random.binomial(1,message_success_prob,1)
+        if e < 25:
+            messaging_ep = 0
+        else:
+            messaging_ep = 1
+
+
         for k in range(nr_A_learning_moves):
 
             u = np.random.choice(agent0.U)
             w.change_true_s(agent0, u)
             o = w.give_o(agent0)
 
-            agent0_acts.append(u)
-            agent0_obs.append(o)
-            agent1_acts.append(u)
-            agent1_obs.append(o)
+            agent0_acts0.append(u)
+            agent0_obs0.append(o)
+            agent1_acts1.append(u)
+            agent1_obs1.append(o)
+
+
+            if messaging_ep:
+                agent1_acts0.append(u)
+                agent1_obs0.append(o)
+
+            
 
 
             u = np.random.choice(agent1.U)
             w.change_true_s(agent1, u)
             o = w.give_o(agent1)
 
-            agent0_acts.append(u+4)
-            agent0_obs.append(o)
-            agent1_acts.append(u+4)
-            agent1_obs.append(o)
+            agent0_acts0.append(u+4)
+            agent0_obs0.append(o)
+            agent1_acts1.append(u+4)
+            agent1_obs1.append(o)
 
 
-      
-        epochs_observations0["lw"].append(agent0_obs)
-        epochs_actions0["lw"].append(agent0_acts)
-        epochs_observations1["rw"].append(agent1_obs)
-        epochs_actions1["rw"].append(agent1_acts)
+            if messaging_ep:
+                agent0_acts1.append(u+4)
+                agent0_obs1.append(o)
+
+            
+
+        epochs_observations_agent_0["0"].append(agent0_obs0)
+        epochs_observations_agent_0["1"].append(agent0_obs1)
+
+        epochs_actions_agent_0["0"].append(agent0_acts0)
+        epochs_actions_agent_0["1"].append(agent0_acts1)
+
+        epochs_observations_agent_1["0"].append(agent1_obs0)
+        epochs_observations_agent_1["1"].append(agent1_obs1)
+
+        epochs_actions_agent_1["0"].append(agent1_acts0)
+        epochs_actions_agent_1["1"].append(agent1_acts1)
+  
         
-        new_gm, [start, end, gm] = EM2(obs_eps = epochs_observations0["lw"],
-                      acts_eps = epochs_actions0["lw"],
+        #agent0 learning his own environment
+        new_gm, [start, end, gm] = EM2(obs_eps = epochs_observations_agent_0["0"],
+                      acts_eps = epochs_actions_agent_0["0"],
                       tm = agent0.B,
                       A_param_shape = (12,2,2,4,4),
                       s_param_shape = (2,2,4,4),
                       gm = np.load("inits/ta_gm.npy"),
                       start = np.load("inits/ta_start.npy"),
                       end = np.load("inits/ta_end.npy"))
-        agent0.A[0] = new_gm.copy() #agent0.true_A[0].copy()+1e-10#new_gm.copy()
+        
+        agent0.A[0] = new_gm.copy()
+        
+        #agent1 learning his own environment
+        new_gm, [start, end, gm] = EM2(obs_eps = epochs_observations_agent_1["1"],
+                            acts_eps = epochs_actions_agent_1["1"],
+                            tm = agent0.B,
+                            A_param_shape = (12,2,2,4,4),
+                            s_param_shape = (2,2,4,4),
+                            gm = np.load("inits/ta_gm.npy"),
+                            start = np.load("inits/ta_start.npy"),
+                            end = np.load("inits/ta_end.npy"))
+              
         agent1.A[0] = new_gm.copy()
-        agent0.A[1] = new_gm.copy()#agent0.true_A[1].copy()+1e-10
-        #agent1.A[1] = agent1.true_A[1].copy()#new_gm.copy()
+
+        
+        #agent0 learning other agents environment
+        new_gm, [start, end, gm] = EM2(obs_eps = epochs_observations_agent_0["1"],
+                      acts_eps = epochs_actions_agent_0["1"],
+                      tm = agent0.B,
+                      A_param_shape = (12,2,2,4,4),
+                      s_param_shape = (2,2,4,4),
+                      gm = np.load("inits/ta_gm.npy"),
+                      start = np.load("inits/ta_start.npy"),
+                      end = np.load("inits/ta_end.npy"))
+        
+        agent0.A[1] = new_gm.copy()
 
         print("I did a GM learning update")
-
-        """
-        if e > acclimatization_episodes:   
-            epochs_observations0["rw"].append(agent0_obs)
-            epochs_actions0["rw"].append(agent0_acts)
-
-            new_gm, [start, end, gm] = EM2(obs_eps = epochs_observations0["rw"],
-                      acts_eps = epochs_actions0["rw"],
-                      tm = agent0.B,
-                      A_param_shape = (12,2,2,4,4),
-                      s_param_shape = (2,2,4,4),
-                      gm = np.load("inits/ta_gm.npy"),
-                      start = np.load("inits/ta_start.npy"),
-                      end = np.load("inits/ta_end.npy"))
-            agent0.A[1] = new_gm.copy()
-
-            print("I updated also the GM of the other")"""
-
-      
        
         """
         new_KL = A_KL(agent0.true_A[1], new_gm)
@@ -1773,14 +1804,6 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
             np.save("inits/ta_end", end)
             np.save("inits/ta_gm", gm)
             print("I saved the params")"""
-        """
-        new_gm = EM2(obs_eps = epochs_observations1["rw"],
-                      acts_eps = epochs_actions1["rw"],
-                      tm = agent1.B,
-                      A_param_shape = (11,2,2,4,4),
-                      s_param_shape = (2,2,4,4))
-        agent1.A[0] = new_gm.copy()"""
-
 
   
 

@@ -48,12 +48,11 @@ start_s[:,:,0,0] = [[0.25,0.25],[0.25,0.25]]
 
 full_start_s = np.repeat(start_s[np.newaxis,:,:,:,:],repeats = 2, axis =0)
 
-true_A = true_A_new(base = 0, pretrain_strength = 1.0, other_strength = 1.0) #TRUE A (0.1, 10,2) works
+true_A = true_A_new(base = 1e-8, pretrain_strength = 1.0, other_strength = 1.0) #TRUE A (0.1, 10,2) works
 #agent0_A = np.load("inits/ta_learnedA.npy").copy()
 #agent1_A = np.load("inits/ta_learnedA.npy").copy()
 
-
-agent0_full_A = np.stack((true_A, true_A), axis = 0) #[agent0_A, agent1_A]
+agent0_full_A = np.stack((true_A, np.ones((12,2,2,4,4))), axis = 0) #[agent0_A, agent1_A]
 agent1_full_A = np.stack((true_A, true_A), axis = 0) #[agent1_A, agent0_A]
 
 U = [0,1,2,3]
@@ -74,31 +73,54 @@ little_u_imaginer = True
 u_prob_threshold = 0.2
 
 
+B = mdp_B
+beta = 1
+nr_moves = 3
+goal_type = "obs" #default or obs
+
+dec_temp = 0
+
+selfish0 = False #to use only one world goal states
+selfish1 = False #to use only one world goal states
+
+state_stabilizer0 = False
+state_stabilizer1 = False
+
+efe_discounting0 = "new"
+efe_discounting1 = "new"
+
+desires_other_showtype = "mean"
+
+
+
+
 def default():
 
+        #experiments params
+        epochs = 1
+        num_tries = 2
+        nr_A_learning_moves = 50
+        message_success_prob = 0.5
+
+
+
         #world params
-        B = mdp_B
         reward = 2 #states 3            #for mdp_B I need 3, for det_B I need 2
         punishment = 6 #states 8           #8 #for mdp_B i need 8, for det_B I need 5
-        beta = 1
-        goal_type = "obs" #default or obs
+        
         uncertain_goals = False
         agent0_goals, agent1_goals = make_goals_two_agent(reward = reward, punishment = punishment, beta = beta, goal_type = goal_type, uncertain_goals = uncertain_goals)
-        nr_moves = 3
-        obs_model_given = False #I am sorry for this
+        
+        obs_model_given = True #I am sorry for this
         A_learning = not obs_model_given
         exploration = False #not used anymore
-        nr_A_learning_moves = 50
+        
+        
 
-        #agent0_goals[1] = np.exp(np.load("learned_goals/first_try.npy"))
-        #print(np.round(agent0_goals[0],2))
-        #print(np.round(np.log(agent0_goals[1]),2))
 
 
         #agent params
         reason_depth = 3
-        dec_temp = 0
-
 
         social0 = True
         social1 = False
@@ -111,22 +133,9 @@ def default():
 
 
 
-        selfish0 = False #to use only one world goal states
-        selfish1 = False #to use only one world goal states
 
         empathetic0 = False  #to learn goals of other
         empathetic1 = False #to learn goals of ohter
-
-
-        state_stabilizer0 = False
-        state_stabilizer1 = False
-
-        efe_discounting0 = "new"
-        efe_discounting1 = "new"
-
-
-
-
 
         infer_only_on_last_action = False
         beta1 = 1 - 10 ** np.random.uniform(-2, -0.5)   # roughly 0.68 to 0.99
@@ -167,13 +176,12 @@ def default():
 
 
 
-        desires_other_showtype = "mean"
-        epochs = 30
-        num_tries = 2
-
-
         
         
+
+
+
+
         A_matrices_eps = []
         bac_eps_1 = []
         bac_eps_2 = []
@@ -204,7 +212,7 @@ def default():
   
                 epochs_positions, epochs_A_matrices, epochs_agent_worlds, epochs_beliefs, epochs_desires, cheeses, epochs_pus, epochs_best_act_counters = run(agent0 = agent0, agent1 = agent1, epochs = epochs, nr_moves = nr_moves, reason_depth = reason_depth, start_beliefs = copy.deepcopy(full_start_s),
                                                                                                         exploration_phase = exploration, A_learning = A_learning, infer_only_on_last_action = infer_only_on_last_action,
-                                                                                                        opt_params = opt_params, nr_A_learning_moves = nr_A_learning_moves)
+                                                                                                        opt_params = opt_params, nr_A_learning_moves = nr_A_learning_moves, message_success_prob = message_success_prob)
                 
                 bac1 = []
                 bac2 = []
@@ -268,17 +276,6 @@ def default():
                 json.dump(run_data, f, indent=2)"""
 
                 
-        
-        
-        
-        """
-        efe_eps_plotter(epochs_efes)
-
-        print(A_KL(agent0_A, epochs_A_matrices[-1][0][0]))
-        print(A_KL(agent1_A, epochs_A_matrices[-1][0][1]))
-
-        A_diff_plotter(agent0_A, epochs_A_matrices[-1][0][0])
-        A_diff_plotter(agent0_A, epochs_A_matrices[-1][0][1])"""
 
         """animate(epochs_positions, cheeses, A_matrices = epochs_A_matrices, agent_worlds = epochs_agent_worlds, epochs_beliefs = epochs_beliefs, epochs_desires = epochs_desires,
         desires_other_showtype = desires_other_showtype)"""
