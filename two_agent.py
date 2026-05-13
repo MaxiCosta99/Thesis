@@ -150,8 +150,6 @@ class agent:
   def SFE_call_other(self, sampled_goal = None):
 
       gcp = self.goal_states.copy()
-      #acp = self.A.copy()
-      #bcp = self.s.copy()
 
       if sampled_goal is None:
 
@@ -164,31 +162,25 @@ class agent:
                   filtered_goals =  np.mean(self.goal_states[1].copy(), axis = (1,3)) #np.einsum("ijkl -> ik", self.goal_states[1].copy()) 
                   #filtered_states = np.einsum("ijkl -> ik", self.s[1].copy())
           else:
-              filtered_goals = self.goal_states[1].copy()
+              sampled_goal = self.goal_states[1].copy()
               #filtered_states = self.s[1].copy()
         
-          #SAMPLE OTHER PARAMS IN MY SFE CALL!!!!!!!
-          #OTHERWISE KEEP SAMPLING IN RECURSION STEP, A BIT NUTS
-          sampled_goal = self.goal_states[1] ####self.sample(filtered_goals).copy()
-          assert abs(np.sum(sampled_goal)-1)<1e-6
-          #whose_s = filtered_states
-      
+          
+         
       else:
           
           if self.selfish == True:
               sampled_goal = sampled_goal.reshape(self.goal_states[1].shape[1], self.goal_states[1].shape[3])
               
 
-      #self.A[1] = self.sample(self.A[1].copy()).copy()
-      #self.s[1] = self.sample(self.s[1].copy()).copy()
+
+      assert abs(np.sum(sampled_goal)-1)<1e-6
       self.change_goals(new_goal_states = sampled_goal, who = 1)
 
 
       actions, actions_H = self.SFE(1)
 
       self.goal_states = gcp.copy()
-      #self.A = acp.copy()
-      #self.s = bcp.copy()
       
       return actions, actions_H
 
@@ -196,6 +188,7 @@ class agent:
   def SFE_call_self(self):
 
       gcp = self.goal_states.copy()
+      acp = self.A.copy()
 
       
       if self.selfish == True:
@@ -212,10 +205,10 @@ class agent:
 
 
 
-      #AGENT 1 HAS NO SOCIAL COMPONENT FOR ME!
-      #AGENT 0 SAMPLES COMPONENTS OF AGENT1 WHEN HE PICKS ACTION
-      if self.agent_id == 0:
-          self.goal_states[1] = self.sample(self.goal_states[1].copy()).copy()
+      self.A[0] = norm_om(self.A[0].copy())
+      
+      self.goal_states[1] = self.sample(self.goal_states[1].copy()).copy()
+      self.A[1] = self.sample(self.A[1].copy()).copy()
 
 
 
@@ -225,6 +218,7 @@ class agent:
       actions, actions_H = self.SFE(0)
 
       self.goal_states = gcp.copy()
+      self.A = acp.copy()
       
       return actions, actions_H
 
@@ -893,6 +887,7 @@ class agent:
             if len(o_imagined) == 0:
                 o_imagined = np.random.choice(self.A[who].shape[0], size = 1, p = po)
                 po_imagined = np.array([1])
+                #print(f"I HAD TO IMAGINE RANDOMLY BECAUSE this were the po imagined according to {who} \n {po}")
             
         elif self.branch_reductor == "sample":
             o_imagined = np.random.choice(self.A[who].shape[0], size = 1, p = po)
@@ -1201,17 +1196,15 @@ class agent:
       self.moves_to_go = self.moves_to_go - 1
       self.change_reason_depth()
 
-      #print(f"this is the action taken: {action}")
+      print(f"this is the action taken: {action}")
 
       #do this to put EFE to 0 of the actions not in use THIS IS WRONGGGGGGGG PROB NEED GO TO ZERO
-      if u_imagined is None:
-          H_extended = np.zeros(4)
-      else:
-          H_extended = np.zeros(4)
-          H_extended[u_imagined] = H
+      p_extended = np.zeros(4)
+      p_extended[u_imagined] = softmax(H, 1)
+      
 
 
-      return action, H_extended
+      return action, p_extended
   
   def explore(self):
 
@@ -1243,7 +1236,9 @@ class agent:
 
     if self.reason_depth > self.moves_to_go:
       self.reason_depth = self.reason_depth - 1
-      assert self.reason_depth == self.moves_to_go, "SOMETHING IS SMELLY"
+
+    assert self.reason_depth <= self.moves_to_go
+
 
   def change_environment(self, env_id):
     self.agent_id = env_id
@@ -1457,12 +1452,14 @@ def true_A_new(base, pretrain_strength = float, other_strength = float):
 
     assert agent0_A.all() == agent1_A.all()
 
-    return agent0_A, agent1_A
+    true_A = agent0_A
+
+    return true_A
 
 
 def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_beliefs = np.array,
         exploration_phase = bool, A_learning = bool,
-        infer_only_on_last_action = bool, opt_params = dict):
+        infer_only_on_last_action = bool, opt_params = dict, nr_A_learning_moves = int):
 
   prev_best = 100000
 
@@ -1471,6 +1468,7 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
   epochs_A_matrices = [] #A matrices of each agent (my, his)
   epochs_beliefs = []
   epochs_desires = []
+  epochs_best_act_counts = []
   
   epochs_observations0 = {"lw": [], #leftworld is the proper agent0 env
                           "rw": []} #rightworld is the world of agent1
@@ -1494,9 +1492,10 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
       cheeses.append([np.random.randint(0,2), np.random.randint(0,2)])
 
 
-  epochs_efes = []
+  epochs_pus = []
 
-
+  best_move_0 = [1]
+  best_move_1 = [0,1]
 
   for e in range(epochs):
     print("__________________________________")
@@ -1522,23 +1521,26 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
     beliefs.append((agent0.s.copy(),agent1.s.copy()))
 
 
+    best_act_counter0 = 0
+    best_act_counter1 = 0
+
+    pus0 = []
+    pus1 = []
 
     for k in range(nr_moves):
 
       if agent0.agent_id == 0: #if agent0 in env 1 he explores, if agent1 in env 0 he explores
 
-        u, H = agent0.pick_action()
+        u0, pu0 = agent0.pick_action()
+
+        pus0.append(pu0)
 
 
-        agent0.act(u)
-        agent1.act_other(u)
+        agent0.act(u0)
+        agent1.act_other(u0)
 
-        
-        if k == 0:
-            efes = H
-        
 
-        w.change_true_s(agent0, u)
+        w.change_true_s(agent0, u0)
         o = w.give_o(agent0)
         
         positions.append(pos_conv(w.true_s))
@@ -1557,13 +1559,16 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
         
 
         
-        u, _ = agent1.pick_action()
+        u1, pu1 = agent1.pick_action()
 
-        agent1.act(u)
-        agent0.act_other(u)
+        pus1.append(pu1)
+
+
+        agent1.act(u1)
+        agent0.act_other(u1)
         
 
-        w.change_true_s(agent1, u)
+        w.change_true_s(agent1, u1)
         o = w.give_o(agent1)
    
         positions.append(pos_conv(w.true_s))
@@ -1577,6 +1582,36 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
           
         beliefs.append((agent0.s.copy(),agent1.s.copy()))
 
+        
+        if k == 0 and u0 == best_move_0[k]:
+            best_act_counter0 += 1
+        
+        elif cheeses[e][0] == 0 and k == 1 and u0 == 2:
+            best_act_counter0 += 1
+        
+        elif cheeses[e][0] == 1 and k == 1 and u0 == 3:
+            best_act_counter0 += 1
+
+        elif cheeses[e][0] == 0 and k == 2 and u0 != 3:
+            best_act_counter0 += 1
+
+        elif cheeses[e][0] == 1 and k == 2 and u0 != 2:
+            best_act_counter0 += 1
+
+        if k < 2 and u1 == best_move_1[k]:
+            best_act_counter1 = best_act_counter1 + 1
+
+        elif cheeses[e][1] == 0 and k == 2 and u1 == 2:
+            best_act_counter1 = best_act_counter1 + 1
+
+        elif cheeses[e][1] == 1 and k == 2 and u1 == 3:
+            best_act_counter1 = best_act_counter1 + 1
+
+
+        
+
+
+
 
 
 
@@ -1586,15 +1621,18 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
             
             if infer_only_on_last_action == True:
                 if k == nr_moves-1:
-                    agent0.update_goals_other(u, beliefs[-2][0], opt_params)
+                    agent0.update_goals_other(u1, beliefs[-2][0], opt_params)
                     #print(f"These are the learned goals at the end of the episode: \n {np.round(agent0.goal_states[1],2)}")
             else:
                 if e < 10:
-                    agent0.update_goals_other(u, beliefs[-2][0], opt_params)
+                    agent0.update_goals_other(u1, beliefs[-2][0], opt_params)
                 else:
-                    agent0.update_goals_other(u, beliefs[-2][0], opt_params) #use my beliefs about his beliefs before that we acted
+                    agent0.update_goals_other(u1, beliefs[-2][0], opt_params) #use my beliefs about his beliefs before that we acted
             
-            
+
+        
+
+
     
 
       else:
@@ -1647,9 +1685,6 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
         agent1_obs.append(o)
 
     
-  
-    
-    epochs_efes.append(efes)
 
 
     
@@ -1661,7 +1696,6 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
         agent0_obs = []
         agent1_obs = []
         
-        nr_A_learning_moves = 50
         agent0.random_moves = True
         agent0.moves_to_go = nr_A_learning_moves
         agent1.random_moves = True
@@ -1752,16 +1786,18 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
 
     epochs_positions.append(positions)
 
-    epochs_A_matrices.append((agent0.A.copy(), agent0.A.copy()))
+    epochs_A_matrices.append((agent0.A.copy(), agent1.A.copy()))
 
     epochs_beliefs.append(beliefs)
 
     epochs_desires.append((agent0.goal_states.copy(),agent1.goal_states.copy()))
 
+    epochs_pus.append([pus0,pus1])
+    
+    epochs_best_act_counts.append([best_act_counter0, best_act_counter1])
 
-  
 
-  return epochs_positions, epochs_A_matrices, epochs_agent_worlds, epochs_beliefs, epochs_desires, cheeses, epochs_efes
+  return epochs_positions, epochs_A_matrices, epochs_agent_worlds, epochs_beliefs, epochs_desires, cheeses, epochs_pus, epochs_best_act_counts
 
 
 def main():

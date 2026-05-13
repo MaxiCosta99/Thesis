@@ -146,7 +146,7 @@ class Renderer:
                 (ox + c * CELL_SIZE, oy + ROWS * CELL_SIZE)
             )
 
-        if active:
+        """if active:
             pygame.draw.rect(
                 self.screen,
                 ACTIVE_BORDER,
@@ -156,7 +156,7 @@ class Renderer:
                     ROWS * CELL_SIZE + 8
                 ),
                 width=3
-            )
+            )"""
 
     def draw_agents(self, AGENT_COLORS, CELL_SIZE):
         if self.agent0_world == 0:
@@ -333,6 +333,7 @@ def animate(epoch_positions, cheeses, A_matrices, agent_worlds, epochs_beliefs, 
     clock = pygame.time.Clock()
 
     step_idx = 0
+    frame_idx = 0
 
     for i in range(len(epoch_positions)):
 
@@ -451,6 +452,9 @@ def animate(epoch_positions, cheeses, A_matrices, agent_worlds, epochs_beliefs, 
 
             for dmr in dm_renderers:
                 dmr.render()
+
+            frame_idx = frame_idx + 1
+            #save_frame(screen, frame_idx)
 
             pygame.display.flip()
 

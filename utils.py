@@ -10,10 +10,13 @@ def norm_om(A):
 def flatten_om(A):
     return A.reshape(A.shape[0],-1)
 
+
+
+
 def state_switcher(learned_A, true_A):
     """
     learnedA is a dirichlet counts matrix (can be of shape (num_obs, -1) as also (num_obs,2,4)
-    true_A is a categorical of shape (num_obs, 2,2,4,4) or (num_obs, 4,2)
+    true_A is a categorical of shape (num_obs, 2,4) or (num_obs, 4,2)
 
     output will be of shape of true_A (NOT THE INPUT LEARNED_A SHAPE!!!!!)
     """
@@ -245,7 +248,7 @@ def unnorm_Mstep(inf_states_eps, obs_eps, flat_gm_shape):
         for i in range(inf_states.shape[0]-1):
             gm[obs[i]] = gm[obs[i]] + inf_states[i+1]
 
-    unnorm_gm = gm+1e-12
+    unnorm_gm = gm+1e-6
 
     return unnorm_gm
 
@@ -406,7 +409,7 @@ def Mstep2(inf_states_eps, obs_eps, gm_shape):
 
 
 
-def unnoised_Mstep2(inf_states_eps, obs_eps, gm_shape):
+def unnorm_Mstep2(inf_states_eps, obs_eps, gm_shape):
 
     gm = np.zeros(gm_shape)
     
@@ -414,7 +417,7 @@ def unnoised_Mstep2(inf_states_eps, obs_eps, gm_shape):
         for i in range(inf_states.shape[0]-1):
             gm[obs[i]] = gm[obs[i]] + inf_states[i+1]
 
-    unnorm_gm = gm/np.sum(gm, axis = 0, keepdims = True)
+    unnorm_gm = gm + 1e-8#/np.sum(gm, axis = 0, keepdims = True)
 
     return unnorm_gm
 
@@ -459,7 +462,7 @@ def EM2(obs_eps, acts_eps, tm, A_param_shape, s_param_shape, gm = None, start = 
         gm = Mstep2(inf_states, obs_eps, gm_shape)
 
 
-    gm = unnoised_Mstep2(inf_states, obs_eps, gm_shape)
+    gm = unnorm_Mstep2(inf_states, obs_eps, gm_shape)
 
     return gm, [start, end, gm]
 
@@ -648,36 +651,52 @@ def A_KL(A, learned_A):
 
 
 
-def A_KL_plotter(true_A, learned_As, best_action_count):
+def A_KL_plotter(kls_eps, var_eps, bac_eps):
 
-    num_eps = len(learned_As)
-    
-    kls = []
-    var = []
+    x = np.arange(len(kls_eps[0]))
 
-    for i in range(num_eps):
+    kls_eps = np.array(kls_eps)
+    var_eps = np.array(var_eps)
+    bac_eps = np.array(bac_eps)
 
-        kls.append(A_KL(true_A, state_switcher(learned_As[i], true_A)))
-        var.append(compute_norm_cov_A(learned_As[i]))
+    kls_eps_stddev = np.std(kls_eps, axis=0)
+    kls_eps_mean = np.mean(kls_eps, axis=0)
+    var_eps_stddev = np.std(var_eps, axis=0)
+    var_eps_mean = np.mean(var_eps, axis=0)
+    bac_eps_stddev = np.std(bac_eps, axis=0)
+    bac_eps_mean = np.mean(bac_eps, axis=0)
 
+    fig, (ax_top, ax_bot) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
 
-    fig, ax = plt.subplots()
-    ax.plot(kls, label = "KL between true OM and learned OM", linestyle = "-", color = "blue")
-    ax.plot(np.zeros(num_eps), linestyle = "--")
-    ax.plot(best_action_count, label = "Best action taken count", linestyle = "-.")
-    ax.set_xlabel("Episodes")
-    ax.set_ylabel("KL & action count")
+    # Top plot: KL divergence with variance on twin axis
+    ax_top.plot(x, kls_eps_mean, label="KL: true vs learned OM", linestyle="-", color="blue")
+    ax_top.fill_between(x, kls_eps_mean - kls_eps_stddev, kls_eps_mean + kls_eps_stddev,
+                        alpha=0.2, color="blue", label="KL Std Dev")
+    ax_top.set_ylabel("KL divergence")
 
-    ax1 = ax.twinx()
-    ax1.plot(var, label = "Variances of the learned OM", linestyle = "-", color = "green")
-    ax1.set_ylabel("Norm of OM covariances")
+    ax_twin = ax_top.twinx()
+    ax_twin.plot(x, var_eps_mean, label="Norm of OM covariances", linestyle="-", color="green")
+    ax_twin.fill_between(x, var_eps_mean - var_eps_stddev, var_eps_mean + var_eps_stddev,
+                         alpha=0.2, color="green", label="Var Std Dev")
+    ax_twin.set_ylabel("Norm of OM covariances")
 
-    lines1, labels1 = ax.get_legend_handles_labels()
-    lines2, labels2 = ax1.get_legend_handles_labels()
-    ax.legend(lines1 + lines2, labels1 + labels2)
+    lines1, labels1 = ax_top.get_legend_handles_labels()
+    lines2, labels2 = ax_twin.get_legend_handles_labels()
+    ax_top.legend(lines1 + lines2, labels1 + labels2)
+
+    # Bottom plot: best action count
+    ax_bot.plot(x, bac_eps_mean, label="Best action count", linestyle="-.", color="orange")
+    ax_bot.fill_between(x, bac_eps_mean - bac_eps_stddev, bac_eps_mean + bac_eps_stddev,
+                        alpha=0.2, color="orange", label="BAC Std Dev")
+    ax_bot.set_xlabel("Episodes")
+    ax_bot.set_ylabel("Best action count")
+    ax_bot.legend()
+
+    plt.tight_layout()
     plt.show()
-
     
+
+
 def A_diff_plotter(true_A, learned_A):
     A = norm_om(flatten_om(learned_A))
     true_A = flatten_om(true_A)

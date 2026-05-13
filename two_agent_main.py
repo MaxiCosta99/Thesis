@@ -2,10 +2,11 @@ import numpy as np
 import copy
 from two_agent import agent, world, run, true_A, true_A_new
 from two_agent_animator import animate
-from utils import make_goals_two_agent, EM2, A_diff_plotter, efe_eps_plotter, A_KL
+from utils import make_goals_two_agent, EM2, A_diff_plotter, efe_eps_plotter, A_KL, compute_norm_cov_A, state_switcher
 import json
 import os
 from datetime import datetime
+from claude_plotting_two_agents import two_agent_plotter
 
 
 det_B = np.array(([[[0,0,0,0],
@@ -44,15 +45,16 @@ mdp_B = np.array(([[[0,0,0.1,0.1],
 
 start_s = np.zeros((2,2,4,4))
 start_s[:,:,0,0] = [[0.25,0.25],[0.25,0.25]]
+
 full_start_s = np.repeat(start_s[np.newaxis,:,:,:,:],repeats = 2, axis =0)
 
-agent0_A, agent1_A = true_A_new(base = 0, pretrain_strength = 1.0, other_strength = 1.0) #TRUE A (0.1, 10,2) works
+true_A = true_A_new(base = 0, pretrain_strength = 1.0, other_strength = 1.0) #TRUE A (0.1, 10,2) works
 #agent0_A = np.load("inits/ta_learnedA.npy").copy()
 #agent1_A = np.load("inits/ta_learnedA.npy").copy()
 
 
-agent0_full_A = np.stack((agent0_A, agent1_A), axis = 0) #[agent0_A, agent1_A]
-agent1_full_A = np.stack((agent1_A, agent0_A), axis = 0) #[agent1_A, agent0_A]
+agent0_full_A = np.stack((true_A, true_A), axis = 0) #[agent0_A, agent1_A]
+agent1_full_A = np.stack((true_A, true_A), axis = 0) #[agent1_A, agent0_A]
 
 U = [0,1,2,3]
 
@@ -66,7 +68,7 @@ mc_samples0 = 1000 #use in case branch reductor is MCTS (it's not really MCTS HE
 mc_samples1 = 100 #use in case branch reductor is MCTS
 
 little_o_imaginer = True
-o_prob_threshold = 0.2
+o_prob_threshold = 0.15
 
 little_u_imaginer = True
 u_prob_threshold = 0.2
@@ -76,16 +78,17 @@ def default():
 
         #world params
         B = mdp_B
-        reward = 2 #for mdp_B I need 3, for det_B I need 2
-        punishment = 6#8 #for mdp_B i need 8, for det_B I need 5
+        reward = 2 #states 3            #for mdp_B I need 3, for det_B I need 2
+        punishment = 6 #states 8           #8 #for mdp_B i need 8, for det_B I need 5
         beta = 1
         goal_type = "obs" #default or obs
-        uncertain_goals = True
+        uncertain_goals = False
         agent0_goals, agent1_goals = make_goals_two_agent(reward = reward, punishment = punishment, beta = beta, goal_type = goal_type, uncertain_goals = uncertain_goals)
         nr_moves = 3
-        obs_model_given = True #I am sorry for this
+        obs_model_given = False #I am sorry for this
         A_learning = not obs_model_given
-        exploration = False
+        exploration = False #not used anymore
+        nr_A_learning_moves = 50
 
         #agent0_goals[1] = np.exp(np.load("learned_goals/first_try.npy"))
         #print(np.round(agent0_goals[0],2))
@@ -111,7 +114,7 @@ def default():
         selfish0 = False #to use only one world goal states
         selfish1 = False #to use only one world goal states
 
-        empathetic0 = True  #to learn goals of other
+        empathetic0 = False  #to learn goals of other
         empathetic1 = False #to learn goals of ohter
 
 
@@ -160,11 +163,28 @@ def default():
                 json.dump({"hyperparams": opt_params}, f, indent=2)"""
                 
 
+
+
+
+
         desires_other_showtype = "mean"
-        epochs = 20
+        epochs = 30
+        num_tries = 2
 
 
-        agent0 = agent(agent0_full_A.copy(), B.copy(), copy.deepcopy(full_start_s), U = U.copy(), goal_states = copy.deepcopy(agent0_goals),
+        
+        
+        A_matrices_eps = []
+        bac_eps_1 = []
+        bac_eps_2 = []
+        policy_eps_1 = []
+        policy_eps_2 = []
+        kls_eps = []
+        var_eps = []
+
+        for e in range(num_tries):
+
+                agent0 = agent(agent0_full_A.copy(), B.copy(), copy.deepcopy(full_start_s), U = U.copy(), goal_states = copy.deepcopy(agent0_goals),
                 reason_depth = reason_depth, dec_temp = dec_temp, chatty_boy = 0,
                 little_o_imaginer = little_o_imaginer, o_prob_threshold = o_prob_threshold,
                 little_u_imaginer = little_u_imaginer, u_prob_threshold = u_prob_threshold,
@@ -173,7 +193,7 @@ def default():
                 bayes_observe = bayes_observe0, obs_model_given = obs_model_given, efe_discounting = efe_discounting0,
                 state_stabilizer = state_stabilizer0, goal_learning_beta = goal_learning_beta)
 
-        agent1 = agent(agent1_full_A.copy(), B.copy(), copy.deepcopy(full_start_s), U = U.copy(), goal_states = copy.deepcopy(agent1_goals),
+                agent1 = agent(agent1_full_A.copy(), B.copy(), copy.deepcopy(full_start_s), U = U.copy(), goal_states = copy.deepcopy(agent1_goals),
                 reason_depth = reason_depth, dec_temp = dec_temp, chatty_boy = 0,
                 little_o_imaginer = little_o_imaginer, o_prob_threshold = o_prob_threshold,
                 little_u_imaginer = little_u_imaginer, u_prob_threshold = u_prob_threshold,
@@ -182,12 +202,62 @@ def default():
                 bayes_observe = bayes_observe1, obs_model_given = obs_model_given, efe_discounting = efe_discounting1,
                 state_stabilizer = state_stabilizer1, goal_learning_beta = goal_learning_beta)
   
-        
-        epochs_positions, epochs_A_matrices, epochs_agent_worlds, epochs_beliefs, epochs_desires, cheeses, epochs_efes = run(agent0 = agent0, agent1 = agent1, epochs = epochs, nr_moves = nr_moves, reason_depth = reason_depth, start_beliefs = copy.deepcopy(full_start_s),
+                epochs_positions, epochs_A_matrices, epochs_agent_worlds, epochs_beliefs, epochs_desires, cheeses, epochs_pus, epochs_best_act_counters = run(agent0 = agent0, agent1 = agent1, epochs = epochs, nr_moves = nr_moves, reason_depth = reason_depth, start_beliefs = copy.deepcopy(full_start_s),
                                                                                                         exploration_phase = exploration, A_learning = A_learning, infer_only_on_last_action = infer_only_on_last_action,
-                                                                                                        opt_params = opt_params)
+                                                                                                        opt_params = opt_params, nr_A_learning_moves = nr_A_learning_moves)
+                
+                bac1 = []
+                bac2 = []
+                pe1 = []
+                pe2 = []
+                A = []
+                for i in range(epochs):
+                        A.append(epochs_A_matrices[i][0][0]) #all A-matrices are the same for now
+                        
+                        bac1.append(epochs_best_act_counters[i][0])
+                        bac2.append(epochs_best_act_counters[i][1])
+
+                        pe1.append(epochs_pus[i][0][0])
+                        pe2.append(epochs_pus[i][1][0])
+                                
+
+                kls = []
+                var = []
+                for i in range(epochs):
+                
+                        kls.append(A_KL(true_A, A[i]))
+                        var.append(compute_norm_cov_A(A[i]))
+                
+
+                A_matrices_eps.append(A)
+                bac_eps_1.append(bac1)
+                bac_eps_2.append(bac2)
+                policy_eps_1.append(pe1)
+                policy_eps_2.append(pe2)
+                kls_eps.append(kls)
+                var_eps.append(var)
+
+
         
-        
+
+              
+
+
+
+        two_agent_plotter(kls_eps,
+                          var_eps,
+                          policy_eps_1,
+                          policy_eps_2,
+                          bac_eps_1,
+                          bac_eps_2
+                          )
+
+
+
+
+
+
+
         """
         with open(filepath) as f:
                 run_data = json.load(f)

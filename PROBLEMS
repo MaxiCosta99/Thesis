@@ -1,17 +1,3 @@
-Do different planning step weighing, might create interesting behaviour
-    AS OF NOW NO COMPOUNDING OF SUCCESSIVE EFES, ONLY USED LAST ONE
-
-
-
-
-Using sophisticated sampling it works
-Still weird that by uniform sample of all actinos worked, but just sampling a few using u_imagine didn't
-    Might create problems down the line
-        VERY SUSPICIUOS
-
-
-
-
 Current situazia
     Both know both observations and both actions
 
@@ -25,8 +11,7 @@ Should disentangle GM A, one with 5 obs for env1 and one with 7 obs for env2
     when performing inference use GM of respective world
     or obs of respective world 
 
-obs 7 (and possibly 2,3,8) have problems
-    need fixing 
+
 
 
 sophia:
@@ -46,9 +31,6 @@ I have implemented the MC version for two agents, for one agent not yet
         Too high variance and actions sampled are terrible
         This is mainly due to the fact that risk is a VERY POOR GUIDANCE
 
-
-Even if can infer states using bayesian
-    imagining inferences is still based on true inference, to fix so that both can be bayesian
 
 
 for now only using sampling of goals

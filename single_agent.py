@@ -35,8 +35,8 @@ class agent:
         if obs_model_given == True:
             self.A = A.copy()
         else:
-            self.A = np.random.beta(10,1,(5,2,4)).copy()
-            #self.A = np.random.uniform(0,1,(5,2,4)).copy()
+            #self.A = np.random.beta(10,1,(5,2,4)).copy()
+            self.A = np.random.uniform(0,1,(5,2,4)).copy()
         self.s = s
         self.B = B
         self.U = U
@@ -105,6 +105,8 @@ class agent:
                 if self.infer_before_update_obs_model == True:
                     self.observe(o) #infer which state we were in before updating A
                 self.A[o,:] = self.A[o,:] + self.s
+            
+            A = self.A.copy()
         
         if self.update_A_method == "EM_all_ep":
             A, samples = EM(obs_eps = ep_observations, acts_eps = ep_actions, tm_unres = self.B.copy(), A_param_shape = (5,2,4), s_param_shape = (2,4), gm = self.EM_inits["gm"], start = self.EM_inits["start"], end = self.EM_inits["end"], online = online_EM)
@@ -267,19 +269,21 @@ class agent:
 
     def compute_risk_obs(self):
 
-      A_probs = self.A/np.sum(self.A, axis = 0)
-      po = np.einsum("ijk, jk -> i", A_probs, self.s)
+        A_probs = self.A/np.sum(self.A, axis = 0)
+        po = np.einsum("ijk, jk -> i", A_probs, self.s)
 
-      assert abs(np.sum(po)-1) < 0.01, f"probs sum to {np.sum(po)}"
 
-      temp = np.divide(po, self.goal_obs)
-      temp1 = np.where(temp != 0, np.log(temp), 0)
 
-      #temp1 = np.log(temp, where=(temp != 0), out=np.zeros_like(temp))
+        assert abs(np.sum(po)-1) < 0.01, f"probs sum to {np.sum(po)}"
 
-      risk_obs = np.dot(po, temp1)
+        temp = np.divide(po, self.goal_obs)
+        temp1 = np.where(temp != 0, np.log(temp), 0)
 
-      return risk_obs
+        #temp1 = np.log(temp, where=(temp != 0), out=np.zeros_like(temp))
+
+        risk_obs = np.dot(po, temp1)
+
+        return risk_obs
 
     def compute_novelty(self):
       
@@ -511,40 +515,51 @@ class agent:
 
     def pick_action(self):
       
-      if self.random_moves == True:
-          action = np.random.choice(self.U)
+        if self.random_moves == True:
+            action = np.random.choice(self.U)
 
           
-      else:
-          u_imagined, Hu = self.SFE_call()
+        else:
+            u_imagined, Hu = self.SFE_call()
 
-          print(f"These are the actions imagined {u_imagined} \n With their EFE's: {Hu}")
-
-
-          pu = softmax(Hu, self.dec_temp)
-
-          if self.det_dec_rule == True:
-              action = u_imagined[np.argmin(Hu)]
-          
-          else:
-              action = np.random.choice(u_imagined, p = pu)
-
-          print(f"This is the real action taken: {action}")
+            if self.chatty_boy:
+                print(f"These are the actions imagined {u_imagined} \n With their EFE's: {Hu}")
 
 
+            pu = softmax(Hu, self.dec_temp)
 
-      self.moves_to_go = self.moves_to_go - 1
+            try:
+                if self.det_dec_rule == True:
+                    action = u_imagined[np.argmin(Hu)]
+                
+                else:
+                    action = np.random.choice(u_imagined, p = pu)
+            
+            except:
+                if self.chatty_boy:
+                    print(f"\n !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n \n I had to pick a random action because no action was imagined, something exploded in the SFE \n \n \n ")
+                action = np.random.choice(self.U)
 
-      self.change_reason_depth()
 
-      return action
+
+            if self.chatty_boy:
+                print(f"This is the real action taken: {action}")
+
+
+
+        self.moves_to_go = self.moves_to_go - 1
+        self.change_reason_depth()
+
+        return action
 
 
     def change_reason_depth(self):
 
         if self.reason_depth > self.moves_to_go:
           self.reason_depth = self.reason_depth - 1
-          assert self.reason_depth == self.moves_to_go, "SOMETHING IS SMELLY"
+          #assert self.reason_depth == self.moves_to_go, "SOMETHING IS SMELLY"
+
+        assert self.reason_depth <= self.moves_to_go
 
 class world:
 
@@ -665,6 +680,9 @@ def run(me = agent, num_eps = int, start_beliefs = np.ndarray, reason_depth = in
             elif cheeses[e] == 1 and i == 2 and u == 3:
                 best_act_counter = best_act_counter + 1
 
+            else:
+                print("I DID NOT PICK THE BEST ACTION, MY ACTION WAS " + str(u) + " AND THE CHEESE WAS IN POSITION " + str(cheeses[e]))
+
 
 
 
@@ -675,8 +693,9 @@ def run(me = agent, num_eps = int, start_beliefs = np.ndarray, reason_depth = in
 
             if intra_ep_A_learning == True:
                 me.terms = ["nov"]
+                me.reason_depth = 2
             else:
-               me.random_moves = True
+                me.random_moves = True
                 
             acts = []
             observations = []
@@ -685,6 +704,8 @@ def run(me = agent, num_eps = int, start_beliefs = np.ndarray, reason_depth = in
             for i in range(nr_moves_A_learning):
                 u = me.pick_action()
                 me.act(u)
+
+                states.append(me.s.copy())
 
                 w.change_true_s(u)
 
@@ -696,7 +717,7 @@ def run(me = agent, num_eps = int, start_beliefs = np.ndarray, reason_depth = in
                 observations.append(o)
 
                 if intra_ep_A_learning == True:
-                    me.A = me.A.copy() + me.s.copy()
+                    me.A[o] = me.A[o].copy() + me.s.copy()
 
 
                     
