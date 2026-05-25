@@ -2,7 +2,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from matplotlib.ticker import AutoMinorLocator
-from utils import norm_om, flatten_om
+
+# ── Legend locations ───────────────────────────────────────────────────────────
+# Options: "upper left", "upper right", "lower left", "lower right", "center left" etc.
+TWO_AGENT_TOP_LEGEND_LOC = "upper left"
+TWO_AGENT_MID_LEGEND_LOC = "upper right"
+TWO_AGENT_BOT_LEGEND_LOC = "upper left"
 
 # ── Palette ────────────────────────────────────────────────────────────────────
 BG         = "#fafafa"
@@ -181,35 +186,42 @@ AGENT1_COLORS = ["#1d4ed8", "#3b82f6", "#93c5fd", "#bfdbfe"]
 AGENT2_COLORS = ["#b91c1c", "#ef4444", "#fca5a5", "#fee2e2"]
 
 
-def two_agent_plotter(kls_eps, var_eps, policy_eps_1, policy_eps_2,
+def two_agent_plotter(kls_eps_1, kls_eps_2, var_eps_1, var_eps_2,
+                      policy_eps_1, policy_eps_2,
                       bac_eps_1, bac_eps_2):
     """
     Three-panel plot for a two-agent POMDP experiment.
 
     Parameters
     ----------
-    kls_eps      : (n_runs, n_eps)    KL divergence
-    var_eps      : (n_runs, n_eps)    Norm of OM covariances
+    kls_eps_1    : (n_runs, n_eps)    KL divergence for agent 1
+    kls_eps_2    : (n_runs, n_eps)    KL divergence for agent 2
+    var_eps_1    : (n_runs, n_eps)    Norm of OM covariances for agent 1
+    var_eps_2    : (n_runs, n_eps)    Norm of OM covariances for agent 2
     policy_eps_1 : (n_runs, n_eps, 4) Action probabilities for agent 1
     policy_eps_2 : (n_runs, n_eps, 4) Action probabilities for agent 2
     bac_eps_1    : (n_runs, n_eps)    Best action count for agent 1
     bac_eps_2    : (n_runs, n_eps)    Best action count for agent 2
     """
-    kls_eps      = np.array(kls_eps)
-    var_eps      = np.array(var_eps)
+    kls_eps_1    = np.array(kls_eps_1)
+    kls_eps_2    = np.array(kls_eps_2)
+    var_eps_1    = np.array(var_eps_1)
+    var_eps_2    = np.array(var_eps_2)
     policy_eps_1 = np.array(policy_eps_1)
     policy_eps_2 = np.array(policy_eps_2)
     bac_eps_1    = np.array(bac_eps_1)
     bac_eps_2    = np.array(bac_eps_2)
 
-    x    = np.arange(kls_eps.shape[1])
+    x    = np.arange(kls_eps_1.shape[1])
     CLIP = 1e-10
 
     # ── Means and stds ────────────────────────────────────────────────────────
-    kls_mean, kls_std = np.mean(kls_eps, axis=0), np.std(kls_eps, axis=0)
-    var_mean, var_std = np.mean(var_eps, axis=0), np.std(var_eps, axis=0)
+    kls1_mean, kls1_std = np.mean(kls_eps_1, axis=0), np.std(kls_eps_1, axis=0)
+    kls2_mean, kls2_std = np.mean(kls_eps_2, axis=0), np.std(kls_eps_2, axis=0)
+    var1_mean, var1_std = np.mean(var_eps_1, axis=0), np.std(var_eps_1, axis=0)
+    var2_mean, var2_std = np.mean(var_eps_2, axis=0), np.std(var_eps_2, axis=0)
 
-    p1_mean = np.mean(policy_eps_1, axis=0)   # (n_eps, 4)
+    p1_mean = np.mean(policy_eps_1, axis=0)
     p1_std  = np.std(policy_eps_1,  axis=0)
     p2_mean = np.mean(policy_eps_2, axis=0)
     p2_std  = np.std(policy_eps_2,  axis=0)
@@ -218,12 +230,15 @@ def two_agent_plotter(kls_eps, var_eps, policy_eps_1, policy_eps_2,
     bac2_mean, bac2_std = np.mean(bac_eps_2, axis=0), np.std(bac_eps_2, axis=0)
 
     # ── Clip for log scale ────────────────────────────────────────────────────
-    kls_lo   = np.clip(kls_mean - kls_std, CLIP, None)
-    kls_hi   = np.clip(kls_mean + kls_std, CLIP, None)
-    kls_mean = np.clip(kls_mean, CLIP, None)
-    var_lo   = np.clip(var_mean - var_std, CLIP, None)
-    var_hi   = np.clip(var_mean + var_std, CLIP, None)
-    var_mean = np.clip(var_mean, CLIP, None)
+    def _clip(mean, std):
+        return (np.clip(mean, CLIP, None),
+                np.clip(mean - std, CLIP, None),
+                np.clip(mean + std, CLIP, None))
+
+    kls1_mean, kls1_lo, kls1_hi = _clip(kls1_mean, kls1_std)
+    kls2_mean, kls2_lo, kls2_hi = _clip(kls2_mean, kls2_std)
+    var1_mean, var1_lo, var1_hi = _clip(var1_mean, var1_std)
+    var2_mean, var2_lo, var2_hi = _clip(var2_mean, var2_std)
 
     # ── Layout ────────────────────────────────────────────────────────────────
     fig = plt.figure(figsize=(11, 12), facecolor=BG)
@@ -236,27 +251,34 @@ def two_agent_plotter(kls_eps, var_eps, policy_eps_1, policy_eps_2,
 
     N_TICKS = 5
 
-    # ── Top: KL + covariance norm (log) ───────────────────────────────────────
-    ax_top.plot(x, kls_mean, color=C_BLUE,  lw=2.0, label="KL divergence")
-    ax_top.fill_between(x, kls_lo, kls_hi,  color=C_BLUE,  alpha=0.12, label="KL ±1 std")
-    ax_top.plot(x, var_mean, color=C_GREEN, lw=2.0, label="Norm of OM covariances")
-    ax_top.fill_between(x, var_lo, var_hi,  color=C_GREEN, alpha=0.12, label="Cov ±1 std")
+    # ── Top: KL + covariance norm for both agents (log) ───────────────────────
+    ax_top.plot(x, kls1_mean, color=AGENT1_COLORS[0], lw=2.0, label="KL — Agent 1")
+    ax_top.fill_between(x, kls1_lo, kls1_hi, color=AGENT1_COLORS[0], alpha=0.12, label="±1 std")
+    ax_top.plot(x, kls2_mean, color=AGENT2_COLORS[0], lw=2.0, label="KL — Agent 2")
+    ax_top.fill_between(x, kls2_lo, kls2_hi, color=AGENT2_COLORS[0], alpha=0.12, label="±1 std")
+    ax_top.plot(x, var1_mean, color=AGENT1_COLORS[1], lw=2.0, linestyle="--", label="Cov norm — Agent 1")
+    ax_top.fill_between(x, var1_lo, var1_hi, color=AGENT1_COLORS[1], alpha=0.12, label="±1 std")
+    ax_top.plot(x, var2_mean, color=AGENT2_COLORS[1], lw=2.0, linestyle="--", label="Cov norm — Agent 2")
+    ax_top.fill_between(x, var2_lo, var2_hi, color=AGENT2_COLORS[1], alpha=0.12, label="±1 std")
     ax_top.set_yscale("log")
     ax_top.set_ylim(1e-10, 1e3)
     ax_top.set_ylabel("Log scale", color=MUTED, fontsize=10)
     ax_top.yaxis.grid(True, color=GRID_COLOR, linewidth=0.7, linestyle="--", alpha=1.0)
     ax_top.spines["left"].set_edgecolor(GRID_COLOR)
-    _styled_legend(ax_top, loc="upper left")
+    _styled_legend(ax_top, loc=TWO_AGENT_TOP_LEGEND_LOC)
+
+    ACTION_NAMES = ["Down", "Up", "Left", "Right"]
 
     # ── Middle: action probabilities ──────────────────────────────────────────
     for a in range(4):
         ax_mid.plot(x, p1_mean[:, a], color=AGENT1_COLORS[a], lw=1.8,
-                    label=f"Agent 1 — action {a+1}")
+                    label=f"{ACTION_NAMES[a]}")
         ax_mid.fill_between(x, p1_mean[:, a] - p1_std[:, a],
                                p1_mean[:, a] + p1_std[:, a],
                             color=AGENT1_COLORS[a], alpha=0.12)
+    for a in range(4):
         ax_mid.plot(x, p2_mean[:, a], color=AGENT2_COLORS[a], lw=1.8,
-                    label=f"Agent 2 — action {a+1}")
+                    label=f"{ACTION_NAMES[a]}")
         ax_mid.fill_between(x, p2_mean[:, a] - p2_std[:, a],
                                p2_mean[:, a] + p2_std[:, a],
                             color=AGENT2_COLORS[a], alpha=0.12)
@@ -264,7 +286,7 @@ def two_agent_plotter(kls_eps, var_eps, policy_eps_1, policy_eps_2,
     ax_mid.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
     ax_mid.set_ylabel("Action probability", color=MUTED, fontsize=10)
     ax_mid.yaxis.grid(True, color=GRID_COLOR, linewidth=0.7, linestyle="--", alpha=1.0)
-    _styled_legend(ax_mid, loc="upper right", ncol=2)
+    _styled_legend(ax_mid, loc=TWO_AGENT_MID_LEGEND_LOC, ncol=2)
 
     # ── Bottom: best action counts ────────────────────────────────────────────
     def _nice_ticks(data_max, n_ticks=N_TICKS):
@@ -290,7 +312,7 @@ def two_agent_plotter(kls_eps, var_eps, policy_eps_1, policy_eps_2,
     ax_bot.set_ylabel("Best action count", color=MUTED, fontsize=10)
     ax_bot.set_xlabel("Episode", fontsize=10, color=MUTED)
     ax_bot.yaxis.grid(True, color=GRID_COLOR, linewidth=0.7, linestyle="--", alpha=1.0)
-    _styled_legend(ax_bot, loc="upper left")
+    _styled_legend(ax_bot, loc=TWO_AGENT_BOT_LEGEND_LOC)
 
     # ── Integer x ticks ───────────────────────────────────────────────────────
     n_eps  = len(x)

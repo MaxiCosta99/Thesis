@@ -417,7 +417,7 @@ def unnorm_Mstep2(inf_states_eps, obs_eps, gm_shape):
         for i in range(inf_states.shape[0]-1):
             gm[obs[i]] = gm[obs[i]] + inf_states[i+1]
 
-    unnorm_gm = gm + 1e-8#/np.sum(gm, axis = 0, keepdims = True)
+    unnorm_gm = gm + 1#/np.sum(gm, axis = 0, keepdims = True)
 
     return unnorm_gm
 

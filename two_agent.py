@@ -35,11 +35,30 @@ class agent:
                branch_reductor = str, mc_samples = int, selfish = bool, empathetic = bool,
                bayes_observe = bool, obs_model_given = bool, efe_discounting = str,
                state_stabilizer = bool, goal_learning_beta = float):
+    
+    self.true_A = A.copy()
+    self.agent_id = agent_id
+    
     if  obs_model_given == True:
         self.A = A.copy()
     else:
-        my_A = np.random.beta(10,1, A[0].shape) #my observation model (a catagorical)
-        your_A = np.ones(A[1].shape) #your observation model (a dirichlet)
+        baseline = 1e-5
+        temp = np.zeros(self.true_A[0].shape)+baseline
+        temp0 = temp.copy()
+        temp1 = temp.copy()
+        temp0[4] = 1
+        temp1[11] = 1
+        temp0 /= baseline
+        temp1 /= baseline
+
+        if self.agent_id == 0:
+            my_A = temp0
+            your_A = temp1
+        else:
+            my_A = temp1
+            your_A = temp0
+        #your_A = np.ones(A[1].shape) #your observation model (a dirichlet)
+
         self.A = np.stack((my_A, your_A), axis = 0)
 
     self.s = s #[my/your belief, agent0cheese, agent1cheese, agent0pos, agetn1pos]
@@ -55,7 +74,6 @@ class agent:
     self.u_prob_threshold = u_prob_threshold
 
 
-    self.agent_id = agent_id
     self.moves_to_go = moves_to_go
     self.social = social
     self.terms = terms
@@ -75,7 +93,7 @@ class agent:
 
 
 
-    self.true_A = A.copy()
+   
 
     self.state_stabilizer = state_stabilizer
 
@@ -100,6 +118,17 @@ class agent:
         
     assert self.reason_depth >= 1, f"My man you want to do thinking depth of: {self.reason_depth}?"
     assert self.moves_to_go >= 1, f"You can always move"
+
+
+
+    implemented_sampling = ["sample", "mean"]
+    implemented_sampling_obj = ["om", "goals"]
+
+    for key in sampling:
+        assert key in implemented_sampling_obj, f"{key} is not in the implemented list {implemented_sampling_obj}"
+    assert sampling["om"] in implemented_sampling, f"{sampling["om"]} is not in the implemented list {implemented_sampling}"
+    assert sampling["goals"] in implemented_sampling, f"{sampling["goals"]} is not in the implemented list {implemented_sampling}"
+
 
 
   def discount_EFE(self, EFE, current_depth):
@@ -130,19 +159,23 @@ class agent:
       self.random_moves = False
 
 
-  def sample(self, dcm):
+  def sample(self, dcm, sampler):
       """
       dcm is dirichlet counts matrix
       """
       dcm_shape = dcm.shape
       dcm_flat = dcm.reshape(-1)
+
       
-      if self.sampling == "mean":
+      if sampler == "mean":
           sample = dcm_flat/np.sum(dcm_flat)
 
-      elif self.sampling == "sample":
+      elif sampler == "sample":
           sample = np.random.dirichlet(dcm_flat)
-      
+
+      else:
+          assert 1/0, f"{sampler} does not exist"
+  
       out = sample.reshape(dcm_shape)
       return out
 
@@ -190,7 +223,8 @@ class agent:
       gcp = self.goal_states.copy()
       acp = self.A.copy()
 
-      
+
+      #this bit is useless now, just kept because why not
       if self.selfish == True:
 
           if self.agent_id == 0:
@@ -200,18 +234,15 @@ class agent:
       else:
           filtered_goals = self.goal_states[0].copy()
         
-       
+
+      #I don't sample my obs model and my goals (no uncertainty about them) 
       self.change_goals(new_goal_states = filtered_goals, who = 0)
-
-
-
       self.A[0] = norm_om(self.A[0].copy())
       
-      self.goal_states[1] = self.sample(self.goal_states[1].copy()).copy()
-      self.A[1] = self.sample(self.A[1].copy()).copy()
+      
 
-
-
+      self.goal_states[1] = self.sample(self.goal_states[1].copy(), self.sampling["goals"]).copy()
+      self.A[1] = self.sample(self.A[1].copy(), self.sampling["om"]).copy()
 
 
 
@@ -886,9 +917,14 @@ class agent:
             
             
             if len(o_imagined) == 0:
+                
                 o_imagined = np.random.choice(self.A[who].shape[0], size = 1, p = po)
                 po_imagined = np.array([1])
-                #print(f"I HAD TO IMAGINE RANDOMLY BECAUSE this were the po imagined according to {who} \n {po}")
+                if self.agent_id == 0:
+                    o_imagined = [4]
+                else:
+                    o_imagined = [11]
+                #assert False, f"I HAD TO IMAGINE RANDOMLY BECAUSE this were the po imagined by {self.agent_id} according to {who} \n {po}"
             
         elif self.branch_reductor == "sample":
             o_imagined = np.random.choice(self.A[who].shape[0], size = 1, p = po)
@@ -1460,7 +1496,8 @@ def true_A_new(base, pretrain_strength = float, other_strength = float):
 
 def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_beliefs = np.array,
         exploration_phase = bool, A_learning = bool,
-        infer_only_on_last_action = bool, opt_params = dict, nr_A_learning_moves = int, message_success_prob = float):
+        infer_only_on_last_action = bool, opt_params = dict, nr_A_learning_moves = int, message_success_prob = float,
+        selfish_episodes = int):
 
   prev_best = 100000
 
@@ -1528,6 +1565,8 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
 
 
     for k in range(nr_moves):
+
+
 
       if agent0.agent_id == 0: #if agent0 in env 1 he explores, if agent1 in env 0 he explores
 
@@ -1703,7 +1742,11 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
         w = world(cheeses[e])
 
         messaging_ep = np.random.binomial(1,message_success_prob,1)
-        if e < 25:
+
+
+
+
+        if e < selfish_episodes:
             messaging_ep = 0
         else:
             messaging_ep = 1
@@ -1724,6 +1767,8 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
             if messaging_ep:
                 agent1_acts0.append(u)
                 agent1_obs0.append(o)
+                agent0_acts1.append(u)
+                agent0_obs1.append(o)
 
             
 
@@ -1741,58 +1786,62 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
             if messaging_ep:
                 agent0_acts1.append(u+4)
                 agent0_obs1.append(o)
+                agent1_acts0.append(u+4)
+                agent1_obs0.append(o)
 
             
 
         epochs_observations_agent_0["0"].append(agent0_obs0)
-        epochs_observations_agent_0["1"].append(agent0_obs1)
+        epochs_observations_agent_0["1"].append(agent0_obs1) if agent0_obs1 else None
 
         epochs_actions_agent_0["0"].append(agent0_acts0)
-        epochs_actions_agent_0["1"].append(agent0_acts1)
+        epochs_actions_agent_0["1"].append(agent0_acts1) if agent0_acts1 else None
 
-        epochs_observations_agent_1["0"].append(agent1_obs0)
+        epochs_observations_agent_1["0"].append(agent1_obs0) if agent1_obs0 else None
         epochs_observations_agent_1["1"].append(agent1_obs1)
 
-        epochs_actions_agent_1["0"].append(agent1_acts0)
+        epochs_actions_agent_1["0"].append(agent1_acts0) if agent1_acts0 else None
         epochs_actions_agent_1["1"].append(agent1_acts1)
   
         
         #agent0 learning his own environment
-        new_gm, [start, end, gm] = EM2(obs_eps = epochs_observations_agent_0["0"],
-                      acts_eps = epochs_actions_agent_0["0"],
-                      tm = agent0.B,
-                      A_param_shape = (12,2,2,4,4),
-                      s_param_shape = (2,2,4,4),
-                      gm = np.load("inits/ta_gm.npy"),
-                      start = np.load("inits/ta_start.npy"),
-                      end = np.load("inits/ta_end.npy"))
+        if e < selfish_episodes:
+            new_gm, [start, end, gm] = EM2(obs_eps = epochs_observations_agent_0["0"],
+                          acts_eps = epochs_actions_agent_0["0"],
+                          tm = agent0.B,
+                          A_param_shape = (12,2,2,4,4),
+                          s_param_shape = (2,2,4,4),
+                          gm = np.load("inits/ta_gm.npy"),
+                          start = np.load("inits/ta_start.npy"),
+                          end = np.load("inits/ta_end.npy"))
+            
+            agent0.A[0] = new_gm.copy()
+            
+            #agent1 learning his own environment
+            """new_gm, [start, end, gm] = EM2(obs_eps = epochs_observations_agent_1["1"],
+                                acts_eps = epochs_actions_agent_1["1"],
+                                tm = agent0.B,
+                                A_param_shape = (12,2,2,4,4),
+                                s_param_shape = (2,2,4,4),
+                                gm = np.load("inits/ta_gm.npy"),
+                                start = np.load("inits/ta_start.npy"),
+                                end = np.load("inits/ta_end.npy"))"""
+                  
+            agent1.A[0] = new_gm.copy()
         
-        agent0.A[0] = new_gm.copy()
-        
-        #agent1 learning his own environment
-        new_gm, [start, end, gm] = EM2(obs_eps = epochs_observations_agent_1["1"],
-                            acts_eps = epochs_actions_agent_1["1"],
-                            tm = agent0.B,
-                            A_param_shape = (12,2,2,4,4),
-                            s_param_shape = (2,2,4,4),
-                            gm = np.load("inits/ta_gm.npy"),
-                            start = np.load("inits/ta_start.npy"),
-                            end = np.load("inits/ta_end.npy"))
-              
-        agent1.A[0] = new_gm.copy()
 
-        
         #agent0 learning other agents environment
-        new_gm, [start, end, gm] = EM2(obs_eps = epochs_observations_agent_0["1"],
-                      acts_eps = epochs_actions_agent_0["1"],
-                      tm = agent0.B,
-                      A_param_shape = (12,2,2,4,4),
-                      s_param_shape = (2,2,4,4),
-                      gm = np.load("inits/ta_gm.npy"),
-                      start = np.load("inits/ta_start.npy"),
-                      end = np.load("inits/ta_end.npy"))
-        
-        agent0.A[1] = new_gm.copy()
+        else:
+            new_gm, [start, end, gm] = EM2(obs_eps = epochs_observations_agent_0["1"],
+                          acts_eps = epochs_actions_agent_0["1"],
+                          tm = agent0.B,
+                          A_param_shape = (12,2,2,4,4),
+                          s_param_shape = (2,2,4,4),
+                          gm = np.load("inits/ta_gm.npy"),
+                          start = np.load("inits/ta_start.npy"),
+                          end = np.load("inits/ta_end.npy"))
+            
+            agent0.A[1] = new_gm.copy()
 
         print("I did a GM learning update")
        

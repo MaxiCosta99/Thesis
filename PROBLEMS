@@ -38,7 +38,9 @@ for now only using sampling of goals
     NO SAMPLING OF STATE
 
 
-Plot action probs not EFES
+In two agent setting, With goal_obs reward 2 and punishment 6
+    reason_depth 2 is sufficient, HOW?
+    only goal_obs, no novelty term!!!!!
 
 
 REMEMBER NOW THERE IS A GOAL LEARNING BETA

@@ -375,17 +375,29 @@ def animate(epoch_positions, cheeses, A_matrices, agent_worlds, epochs_beliefs, 
         des_matrix_pos = []
         for m in range(2):
             for j in range(2):
-                for k in range(2):
-                    for l in range(2):
-                        if j == 1:
-                            if desires_other_showtype == "mean":
-                                des_matrices.append(desires[m][j][k,l,:]/np.sum(desires[m][j]))
-                                des_matrix_pos.append([ww+100*l+200*j+400*m,mh+200+100*k])
+                if desires[m][j].shape == (2,2,4,4):
+                    for k in range(2):
+                        for l in range(2):
+                            if j == 1:
+                                if desires_other_showtype == "mean":
+                                    des_matrices.append(desires[m][j][k,l,:]/np.sum(desires[m][j]))
+                                    des_matrix_pos.append([ww+100*l+200*j+400*m,mh+200+100*k])
+                                else:
+                                    assert 1/0, f"There is no other desires showtype implemented yet, only mean, but you set {desires_other_showtype}"
                             else:
-                                assert 1/0, f"There is no other desires showtype implemented yet, only mean, but you set {desires_other_showtype}"
-                        else:
-                            des_matrices.append(desires[m][j][k,l,:]) #*10 here before, whyyy???
-                            des_matrix_pos.append([ww+100*l+200*j+400*m,mh+200+100*k])
+                                des_matrices.append(desires[m][j][k,l,:]) #*10 here before, whyyy???
+                                des_matrix_pos.append([ww+100*l+200*j+400*m,mh+200+100*k])
+                elif desires[m][j].shape == (12,):
+                    if desires_other_showtype == "mean":
+                        desires[m][j] = desires[m][j].reshape((3,4))
+                        des_matrices.append(desires[m][j]/np.sum(desires[m][j]))
+                        des_matrix_pos.append([ww+200*j+400*m,mh+200])
+                    else:
+                        assert 1/0, f"There is no other desires showtype implemented yet, only mean, but you set {desires_other_showtype}"
+                            
+
+                else:
+                    assert 1/0; "WHAAAAAAAAT"
                 
         dm_renderers = []
         for mp, m in zip(des_matrix_pos, des_matrices):

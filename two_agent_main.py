@@ -7,6 +7,8 @@ import json
 import os
 from datetime import datetime
 from claude_plotting_two_agents import two_agent_plotter
+import pickle
+from pathlib import Path
 
 
 det_B = np.array(([[[0,0,0,0],
@@ -52,7 +54,10 @@ true_A = true_A_new(base = 1e-8, pretrain_strength = 1.0, other_strength = 1.0) 
 #agent0_A = np.load("inits/ta_learnedA.npy").copy()
 #agent1_A = np.load("inits/ta_learnedA.npy").copy()
 
-agent0_full_A = np.stack((true_A, np.ones((12,2,2,4,4))), axis = 0) #[agent0_A, agent1_A]
+temp = np.zeros((12,2,2,4,4))+1e-8
+temp[11] = 1
+
+agent0_full_A = np.stack((true_A, true_A), axis = 0) #[agent0_A, agent1_A]
 agent1_full_A = np.stack((true_A, true_A), axis = 0) #[agent1_A, agent0_A]
 
 U = [0,1,2,3]
@@ -86,8 +91,8 @@ selfish1 = False #to use only one world goal states
 state_stabilizer0 = False
 state_stabilizer1 = False
 
-efe_discounting0 = "new"
-efe_discounting1 = "new"
+efe_discounting0 = "default"
+efe_discounting1 = "default"
 
 desires_other_showtype = "mean"
 
@@ -97,10 +102,12 @@ desires_other_showtype = "mean"
 def default():
 
         #experiments params
-        epochs = 1
+        experiment_name = "two_agent_sampling_om"
+        epochs = 150
+        selfish_episodes = 75
         num_tries = 2
         nr_A_learning_moves = 50
-        message_success_prob = 0.5
+        message_success_prob = 0.5 #doesnt matter now, after ep 25 always message
 
 
 
@@ -111,16 +118,17 @@ def default():
         uncertain_goals = False
         agent0_goals, agent1_goals = make_goals_two_agent(reward = reward, punishment = punishment, beta = beta, goal_type = goal_type, uncertain_goals = uncertain_goals)
         
-        obs_model_given = True #I am sorry for this
+        obs_model_given = False #I am sorry for this
         A_learning = not obs_model_given
         exploration = False #not used anymore
+     
         
         
 
 
 
         #agent params
-        reason_depth = 3
+        reason_depth = 3 #also works with reason_depth 2 (HOW??)
 
         social0 = True
         social1 = False
@@ -128,8 +136,11 @@ def default():
         terms0 = ["risk_obs"]
         terms1 = ["risk_obs"]
 
-        sampling0 = "mean" #don't use sample for now!!!!
-        sampling1 = "mean"
+        sampling0 = {"om": "sample",
+                     "goals": "mean"}
+        
+        sampling1 = {"om": "mean",
+                     "goals": "mean"} #in reality not used
 
 
 
@@ -146,6 +157,17 @@ def default():
         optimizer = None
         reg_strength = 0
         goal_learning_beta = 1
+
+
+
+
+
+
+
+
+
+
+
 
 
         opt_params = {"natgrad" : False,
@@ -172,23 +194,33 @@ def default():
                 json.dump({"hyperparams": opt_params}, f, indent=2)"""
                 
 
-
-
-
-
-        
-        
-
-
+        experiment_params = {"episodes": epochs,
+                                "selfish_episodes": selfish_episodes,
+                                "num_tries": num_tries,
+                                "nr_A_learning_moves": nr_A_learning_moves,
+                                "reward": reward,
+                                "punishment": punishment,
+                                "uncertain_goals": uncertain_goals,
+                                "obs_model_given": obs_model_given,
+                                "reason_depth": reason_depth,
+                                "social0": social0,
+                                "terms0": terms0,
+                                "terms1": terms1,
+                                "sampling0": sampling0,
+                                "empathetic0": empathetic0,
+                                "opt_params": opt_params}
 
 
         A_matrices_eps = []
+        A_matrices_eps_other = []
         bac_eps_1 = []
         bac_eps_2 = []
         policy_eps_1 = []
         policy_eps_2 = []
         kls_eps = []
         var_eps = []
+        kls_eps_other = []
+        var_eps_other = []
 
         for e in range(num_tries):
 
@@ -212,15 +244,19 @@ def default():
   
                 epochs_positions, epochs_A_matrices, epochs_agent_worlds, epochs_beliefs, epochs_desires, cheeses, epochs_pus, epochs_best_act_counters = run(agent0 = agent0, agent1 = agent1, epochs = epochs, nr_moves = nr_moves, reason_depth = reason_depth, start_beliefs = copy.deepcopy(full_start_s),
                                                                                                         exploration_phase = exploration, A_learning = A_learning, infer_only_on_last_action = infer_only_on_last_action,
-                                                                                                        opt_params = opt_params, nr_A_learning_moves = nr_A_learning_moves, message_success_prob = message_success_prob)
+                                                                                                        opt_params = opt_params, nr_A_learning_moves = nr_A_learning_moves, message_success_prob = message_success_prob, selfish_episodes = selfish_episodes)
+                #animate(epochs_positions, cheeses, A_matrices = epochs_A_matrices, agent_worlds = epochs_agent_worlds, epochs_beliefs = epochs_beliefs, epochs_desires = epochs_desires, desires_other_showtype = desires_other_showtype)
                 
+
                 bac1 = []
                 bac2 = []
                 pe1 = []
                 pe2 = []
                 A = []
+                A_other = []
                 for i in range(epochs):
-                        A.append(epochs_A_matrices[i][0][0]) #all A-matrices are the same for now
+                        A.append(epochs_A_matrices[i][0][0])
+                        A_other.append(epochs_A_matrices[i][0][1])
                         
                         bac1.append(epochs_best_act_counters[i][0])
                         bac2.append(epochs_best_act_counters[i][1])
@@ -231,29 +267,62 @@ def default():
 
                 kls = []
                 var = []
+                kls_other = []
+                var_other = []
                 for i in range(epochs):
                 
                         kls.append(A_KL(true_A, A[i]))
                         var.append(compute_norm_cov_A(A[i]))
+
+                        kls_other.append(A_KL(true_A, A_other[i]))
+                        var_other.append(compute_norm_cov_A(A_other[i]))
+
                 
 
                 A_matrices_eps.append(A)
+                A_matrices_eps_other.append(A_other)
                 bac_eps_1.append(bac1)
                 bac_eps_2.append(bac2)
                 policy_eps_1.append(pe1)
                 policy_eps_2.append(pe2)
                 kls_eps.append(kls)
                 var_eps.append(var)
+                kls_eps_other.append(kls_other)
+                var_eps_other.append(var_other)
+                
+
+        experiment_results = {"bac_eps_1": bac_eps_1,
+                                "bac_eps_2": bac_eps_2,
+                                "policy_eps_1": policy_eps_1,
+                                "policy_eps_2": policy_eps_2,
+                                "kls_eps": kls_eps,
+                                "var_eps": var_eps,
+                                "kls_eps_other": kls_eps_other,
+                                "var_eps_other": var_eps_other}
 
 
+        experiment = {"name": experiment_name,
+                      "date": str(datetime.now()),
+                      "params": experiment_params,
+                      "results": experiment_results}
         
 
-              
+        save_folder = Path("experiments")
+        save_folder.mkdir(exist_ok=True)
+
+        filename = f"{experiment_name}_{datetime.now():%Y%m%d_%H%M%S}.json"
+
+        file_path = save_folder / filename
+
+        with open(file_path, "w") as f:
+                json.dump(experiment, f, indent=4, default=lambda x: x.tolist())
 
 
 
         two_agent_plotter(kls_eps,
+                          kls_eps_other,
                           var_eps,
+                          var_eps_other,
                           policy_eps_1,
                           policy_eps_2,
                           bac_eps_1,
@@ -276,9 +345,6 @@ def default():
                 json.dump(run_data, f, indent=2)"""
 
                 
-
-        """animate(epochs_positions, cheeses, A_matrices = epochs_A_matrices, agent_worlds = epochs_agent_worlds, epochs_beliefs = epochs_beliefs, epochs_desires = epochs_desires,
-        desires_other_showtype = desires_other_showtype)"""
 
 
 
