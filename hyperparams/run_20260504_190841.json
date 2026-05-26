@@ -1,0 +1,29 @@
+{
+  "hyperparams": {
+    "natgrad": false,
+    "log_space": true,
+    "reg_strength": 0,
+    "beta1": 0.99,
+    "beta2": 0.999,
+    "num_iters": 30,
+    "num_samples": 105,
+    "optimizer": "adam",
+    "clipping": false,
+    "clips": null,
+    "step_size": 0.00879594566861927
+  },
+  "result": [
+    0.29,
+    0.36,
+    0.45,
+    0.54,
+    0.47,
+    0.66,
+    0.6,
+    0.6,
+    0.54,
+    3.97,
+    5.27,
+    1.52
+  ]
+}
