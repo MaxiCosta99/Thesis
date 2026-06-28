@@ -1,7 +1,13 @@
 import numpy as np
-import scipy
+from utils import EM2
+from two_agent import world
 
+import matplotlib.pyplot as plt
+from matplotlib.patches import Ellipse
+import os
 
-test = (1,2,3)
+x = np.array([0.5,2])
 
-print(np.prod(test[1:]))
+print(x)
+
+print(np.clip(x,1,None))

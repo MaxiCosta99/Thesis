@@ -146,7 +146,7 @@ class Renderer:
                 (ox + c * CELL_SIZE, oy + ROWS * CELL_SIZE)
             )
 
-        if active:
+        """if active:
             pygame.draw.rect(
                 self.screen,
                 ACTIVE_BORDER,
@@ -156,7 +156,7 @@ class Renderer:
                     ROWS * CELL_SIZE + 8
                 ),
                 width=3
-            )
+            )"""
 
     def draw_agents(self, AGENT_COLORS, CELL_SIZE):
         if self.agent0_world == 0:
@@ -333,8 +333,13 @@ def animate(epoch_positions, cheeses, A_matrices, agent_worlds, epochs_beliefs, 
     clock = pygame.time.Clock()
 
     step_idx = 0
+    frame_idx = 0
 
     for i in range(len(epoch_positions)):
+
+        
+        print(f'This is episode {i}')
+        
 
         beliefs = epochs_beliefs[i]
         desires = epochs_desires[i]
@@ -374,23 +379,34 @@ def animate(epoch_positions, cheeses, A_matrices, agent_worlds, epochs_beliefs, 
         des_matrix_pos = []
         for m in range(2):
             for j in range(2):
-                for k in range(2):
-                    for l in range(2):
-                        if j == 1:
-                            if desires_other_showtype == "mean":
-                                des_matrices.append(desires[m][j][k,l,:]/np.sum(desires[m][j]))
-                                des_matrix_pos.append([ww+100*l+200*j+400*m,mh+200+100*k])
+                if desires[m][j].shape == (2,2,4,4):
+                    for k in range(2):
+                        for l in range(2):
+                            if j == 1:
+                                if desires_other_showtype == "mean":
+                                    des_matrices.append(desires[m][j][k,l,:]/np.sum(desires[m][j]))
+                                    des_matrix_pos.append([ww+100*l+200*j+400*m,mh+200+100*k])
+                                else:
+                                    assert 1/0, f"There is no other desires showtype implemented yet, only mean, but you set {desires_other_showtype}"
                             else:
-                                assert 1/0, f"There is no other desires showtype implemented yet, only mean, but you set {desires_other_showtype}"
-                        else:
-                            des_matrices.append(desires[m][j][k,l,:]) #*10 here before, whyyy???
-                            des_matrix_pos.append([ww+100*l+200*j+400*m,mh+200+100*k])
+                                des_matrices.append(desires[m][j][k,l,:]) #*10 here before, whyyy???
+                                des_matrix_pos.append([ww+100*l+200*j+400*m,mh+200+100*k])
+                elif desires[m][j].shape == (12,):
+                    if desires_other_showtype == "mean":
+                        desires[m][j] = desires[m][j].reshape((3,4))
+                        des_matrices.append(desires[m][j]/np.sum(desires[m][j]))
+                        des_matrix_pos.append([ww+200*j+400*m,mh+200])
+                    else:
+                        assert 1/0, f"There is no other desires showtype implemented yet, only mean, but you set {desires_other_showtype}"
+                            
+
+                else:
+                    assert 1/0; "WHAAAAAAAAT"
                 
         dm_renderers = []
         for mp, m in zip(des_matrix_pos, des_matrices):
             dm_renderers.append(Matrix_Renderer(screen, top_left = mp, os_matrix = m, reduction = None))
 
-    
         running = True
         while running:
             clock.tick(FPS)
@@ -427,7 +443,7 @@ def animate(epoch_positions, cheeses, A_matrices, agent_worlds, epochs_beliefs, 
                     
                             except:
                                 running = False
-                                print(f"This are the remaining remaining beliefs: {beliefs} ")
+                                #print(f"This are the remaining remaining beliefs: {beliefs} ")
                 
                             
 
@@ -452,11 +468,16 @@ def animate(epoch_positions, cheeses, A_matrices, agent_worlds, epochs_beliefs, 
             for dmr in dm_renderers:
                 dmr.render()
 
+            frame_idx = frame_idx + 1
+            #save_frame(screen, frame_idx)
+
             pygame.display.flip()
+
+        
 
 
     pygame.quit()
-    sys.exit()
+    #sys.exit()
 
 if __name__ == "__main__":
     animate()

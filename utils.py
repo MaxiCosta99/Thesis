@@ -10,10 +10,13 @@ def norm_om(A):
 def flatten_om(A):
     return A.reshape(A.shape[0],-1)
 
+
+
+
 def state_switcher(learned_A, true_A):
     """
     learnedA is a dirichlet counts matrix (can be of shape (num_obs, -1) as also (num_obs,2,4)
-    true_A is a categorical of shape (num_obs, 2,2,4,4) or (num_obs, 4,2)
+    true_A is a categorical of shape (num_obs, 2,4) or (num_obs, 4,2)
 
     output will be of shape of true_A (NOT THE INPUT LEARNED_A SHAPE!!!!!)
     """
@@ -136,15 +139,15 @@ def make_goals_two_agent(reward = float, punishment = float, beta = float, goal_
         
     elif goal_type == "obs":
 
-        agent0_goal_obs = np.ones(11)
+        agent0_goal_obs = np.ones(12)
         agent0_goal_obs[2] = rp
         agent0_goal_obs[3] = pp
         agent0_goal_obs = agent0_goal_obs/pp
         agent0_goal_obs_cat = agent0_goal_obs/np.sum(agent0_goal_obs)
 
-        agent1_goal_obs = np.ones(11)
-        agent1_goal_obs[7] = rp
-        agent1_goal_obs[8] = pp
+        agent1_goal_obs = np.ones(12)
+        agent1_goal_obs[9] = rp
+        agent1_goal_obs[10] = pp
         agent1_goal_obs = agent1_goal_obs/pp
         agent1_goal_obs_cat = agent1_goal_obs/np.sum(agent1_goal_obs)
 
@@ -157,7 +160,7 @@ def make_goals_two_agent(reward = float, punishment = float, beta = float, goal_
         agent1_fullgoals = [agent1_goal_obs_cat, agent0_goal_obs]
 
         if uncertain_goals == True:
-            uncertain_goals = np.ones(11)
+            uncertain_goals = np.ones(12)
             agent0_fullgoals[1] = uncertain_goals
             agent1_fullgoals[1] = uncertain_goals
 
@@ -195,11 +198,8 @@ def backward(obs, acts, start, tm, gm):
     return backward_pass
 
 
-def Estep(obs_eps, acts_eps, start, end, tm, gm):
+def Estep(obs_eps, acts_eps, start, end, tm, gm, online):
 
-    num_eps = len(obs_eps)
-    num_visits = len(obs_eps[0])+1
-    num_states = gm.shape[1]
     
     #inf_states_eps = np.zeros((num_eps, num_visits, num_states))
     inf_states_eps = []
@@ -207,32 +207,25 @@ def Estep(obs_eps, acts_eps, start, end, tm, gm):
     for i, (obs, acts) in enumerate(zip(obs_eps, acts_eps)):
         
         fp = forward(obs, acts, start, tm, gm)
-        bp = backward(obs, acts, end, tm, gm)
+
+        if online == False:
+            bp = backward(obs, acts, end, tm, gm)
+        else:
+            bp = 1
+            
         unnorm_inf_states = fp*bp
 
         inf_states = unnorm_inf_states/np.sum(unnorm_inf_states, axis = 1, keepdims = True)
 
-        """
-        lx = np.sum(inf_states[:,0:4], axis = 1)
-        rx = np.sum(inf_states[:,4:8], axis = 1)
-
-        conditions = lx>rx
- 
-
-        for cond, state in zip(conditions, inf_states):
-            if cond:
-                state[4:] = 0
-            else:
-                state[:4] = 0"""
-
-
-        #inf_states_eps[i] = inf_states
+       
         inf_states_eps.append(inf_states)
 
     return inf_states_eps
 
 
-def Mstep(inf_states_eps, gm, obs_eps):
+def Mstep(inf_states_eps, obs_eps, flat_gm_shape):
+
+    gm = np.zeros(flat_gm_shape)
     
     for inf_states, obs in zip(inf_states_eps, obs_eps): 
         for i in range(inf_states.shape[0]-1):
@@ -247,18 +240,20 @@ def Mstep(inf_states_eps, gm, obs_eps):
 
 
 
-def unnorm_Mstep(inf_states_eps, gm, obs_eps):
+def unnorm_Mstep(inf_states_eps, obs_eps, flat_gm_shape):
+
+    gm = np.zeros(flat_gm_shape)
     
     for inf_states, obs in zip(inf_states_eps, obs_eps): 
         for i in range(inf_states.shape[0]-1):
             gm[obs[i]] = gm[obs[i]] + inf_states[i+1]
 
-    unnorm_gm = gm
+    unnorm_gm = gm+1e-6
 
     return unnorm_gm
 
 
-def EM(obs_eps, acts_eps, tm_unres, A_param_shape, s_param_shape, gm = None, start = None, end = None):
+def EM(obs_eps, acts_eps, tm_unres, A_param_shape, s_param_shape, gm = None, start = None, end = None, online = bool):
 
     
     tm = np.zeros((tm_unres.shape[0],2*tm_unres.shape[1], 2*tm_unres.shape[2]))
@@ -309,15 +304,22 @@ def EM(obs_eps, acts_eps, tm_unres, A_param_shape, s_param_shape, gm = None, sta
         gm = gm_sample/np.sum(gm_sample, axis = 0, keepdims = True)
 
         assert np.allclose(np.sum(gm, axis = 0),1)
+
         gm_shape = gm.shape
+
         gm = gm.reshape(gm.shape[0], -1)
+        flat_gm_shape = gm.shape
 
     else:
         gm_sample = gm
         gm = gm
         gm = gm/np.sum(gm, axis = 0, keepdims = True)
+
         gm_shape = gm.shape
+
         gm = gm.reshape(gm.shape[0],-1)
+
+        flat_gm_shape = gm.shape
 
 
     agent_gm = gm.copy() #which dirichlet GM the agent updates, for now the random start
@@ -327,17 +329,143 @@ def EM(obs_eps, acts_eps, tm_unres, A_param_shape, s_param_shape, gm = None, sta
     while np.linalg.norm(gm - gm_old) > 0.001:
         gm_old = gm.copy()
         
-        inf_states = Estep(obs_eps, acts_eps, start, end, tm, gm)
+        inf_states = Estep(obs_eps, acts_eps, start, end, tm, gm, online)
 
-        gm = Mstep(inf_states, gm, obs_eps)
+        gm = Mstep(inf_states, obs_eps, flat_gm_shape)
 
 
-    gm = unnorm_Mstep(inf_states, agent_gm, obs_eps)
+    gm = unnorm_Mstep(inf_states, obs_eps, flat_gm_shape)
 
     return gm, [start_sample, end_sample, gm_sample]
 
 
  
+ 
+def forward2(obs, acts, start, tm, gm):
+    T = len(obs)
+    forward_pass = np.zeros((T+1,2,2,4,4))
+    forward_pass[0,...] = start
+
+    for i in range(T):
+        if acts[i] < 4:
+            forward_pass[i+1] = gm[obs[i]] * (np.einsum("mk, ijkl -> ijml", tm[acts[i]], forward_pass[i]))
+        else:
+            forward_pass[i+1] = gm[obs[i]] * (np.einsum("ml, ijkl -> ijkm", tm[acts[i]-4], forward_pass[i]))
+    
+    return forward_pass
+
+
+def backward2(obs, acts, start, tm, gm):
+    T = len(obs)
+    backward_pass = np.zeros((T+1,2,2,4,4))
+    backward_pass[-1,...] = start
+
+    for i in reversed(range(T)):
+        if acts[i] < 4:
+            backward_pass[i] = np.einsum("mk, ijkl -> ijml", tm[acts[i]].T, gm[obs[i]] * backward_pass[i+1])
+        else:
+            backward_pass[i] = np.einsum("ml, ijkl -> ijkm", tm[acts[i]-4].T, gm[obs[i]] * backward_pass[i+1])
+    
+    return backward_pass
+
+
+def Estep2(obs_eps, acts_eps, start, end, tm, gm):
+
+    
+    inf_states_eps = []
+
+    for i, (obs, acts) in enumerate(zip(obs_eps, acts_eps)):
+        
+        fp = forward2(obs, acts, start, tm, gm)
+        bp = backward2(obs, acts, end, tm, gm)
+        unnorm_inf_states = fp*bp
+
+
+        norm_c = np.einsum("ijkl -> ", unnorm_inf_states[0])
+        
+        assert np.allclose(np.einsum("ijklo -> i", unnorm_inf_states), norm_c, rtol=1e-4)
+
+        inf_states = unnorm_inf_states/norm_c#summed_values
+
+        inf_states_eps.append(inf_states)
+
+    return inf_states_eps
+
+
+def Mstep2(inf_states_eps, obs_eps, gm_shape):
+
+    gm = np.zeros(gm_shape)
+    
+    for inf_states, obs in zip(inf_states_eps, obs_eps): 
+        for i in range(inf_states.shape[0]-1):
+            
+            gm[obs[i]] = gm[obs[i]] + inf_states[i+1]
+
+    gm = gm+1e-6
+
+    norm_gm = gm/np.sum(gm, axis = 0, keepdims = True)
+
+    return norm_gm
+
+
+
+def unnorm_Mstep2(inf_states_eps, obs_eps, gm_shape):
+
+    gm = np.zeros(gm_shape)
+    
+    for inf_states, obs in zip(inf_states_eps, obs_eps): 
+        for i in range(inf_states.shape[0]-1):
+            gm[obs[i]] = gm[obs[i]] + inf_states[i+1]
+
+    unnorm_gm = gm + 1#/np.sum(gm, axis = 0, keepdims = True)
+
+    return unnorm_gm
+
+
+def EM2(obs_eps, acts_eps, tm, A_param_shape, s_param_shape, gm = None, start = None, end = None):
+
+    if start is None:
+        start = np.random.beta(10,1,s_param_shape) #in case I don't want to use init
+        start = start/np.sum(start)
+
+    else:
+        start = start
+
+    if end is None:
+        end = np.random.beta(10,1,s_param_shape) #in case I don't want to use init
+        end = end/np.sum(end)
+
+    else:
+        end = end
+
+    if gm is None:
+        gm_sample = np.random.beta(10,1, A_param_shape)
+        gm = gm_sample/np.sum(gm_sample, axis = 0, keepdims = True)
+        assert np.allclose(np.sum(gm, axis = 0),1)
+        gm_shape = gm.shape
+
+    else:
+        gm = gm
+        gm_shape = gm.shape
+
+
+
+
+    agent_gm = gm.copy() #which dirichlet GM the agent updates, for now the random start
+
+    gm_old = np.zeros(gm.shape)
+    while np.linalg.norm(gm - gm_old) > 0.0001:
+        gm_old = gm.copy()
+        
+        inf_states = Estep2(obs_eps, acts_eps, start, end, tm, gm)
+
+        gm = Mstep2(inf_states, obs_eps, gm_shape)
+
+
+    gm = unnorm_Mstep2(inf_states, obs_eps, gm_shape)
+
+    return gm, [start, end, gm]
+
  
 
 def dir_VI(logl, data, prior, goal_learning_vars = dict, opt_params = dict):
@@ -377,6 +505,7 @@ def dir_VI(logl, data, prior, goal_learning_vars = dict, opt_params = dict):
             sample = np.random.dirichlet(var)
             score = -sp.polygamma(0, var) + sp.polygamma(0, sumv) + np.log(sample)
             samples[i] = logl(data, sample) * score
+            
 
         exp_grad = np.sum(samples, axis = 0)/num_samples
 
@@ -458,23 +587,29 @@ def dir_VI(logl, data, prior, goal_learning_vars = dict, opt_params = dict):
                 assert 1/0, "What?? THERE IS NO OTHER OPTIMIZER"
 
 
-            if clipping == True:
-                grad = np.clip(grad, clips[0], clips[1])
             
-            #print(f"These are the pre opt gradients: \n {grad} ")
-            #print(f"this are the post opt gradients: \n {opt_grad}")
-
             
-            #print(f"These are the old dirs in exp_space:\n  {phi}")
-            phi = phi + step_size * grad
-            #print(f"These are the new dirs in exp space: \n {phi}")
+            phi = phi + step_size * opt_grad
             var = np.exp(phi)
+
+            if clipping == True:
+                var = np.clip(var, 1,None)
             
         else:
             assert 1/0, "Can do only things in exp space for now"
 
 
+    lgl = logl(data, var/np.sum(var))
+    print(f'This is the logl of the action of the other w/ new goals: {lgl}')
     
+
+
+    print('-------------------------------')
+    print(f"These are the new dirs in exp space: \n {np.round(phi,2)}")
+    print(f"These are the grads in exp space: \n {np.round(opt_grad, 2)}")
+    print(f"These are the non optimized grads in exp space: \n {np.round(grad,2)}")
+    print('-------------------------------')
+
 
     
     return var, goal_learning_vars
@@ -518,7 +653,7 @@ def A_KL(A, learned_A):
     learned_A = norm_om(flatten_om(learned_A))
     A = flatten_om(A)
 
-    assert np.allclose(np.sum(A, axis = 0),1), f"The columns of A sum to {np.sum(learned_A, axis = 0)}"
+    assert np.allclose(np.sum(A, axis = 0),1), f"The columns of A sum to {np.sum(A, axis = 0)}"
 
     kl = np.where(A != 0, A *np.log(np.divide(A, learned_A)), 0)
     return np.sum(kl)
@@ -526,36 +661,52 @@ def A_KL(A, learned_A):
 
 
 
-def A_KL_plotter(true_A, learned_As, best_action_count):
+def A_KL_plotter(kls_eps, var_eps, bac_eps):
 
-    num_eps = len(learned_As)
-    
-    kls = []
-    var = []
+    x = np.arange(len(kls_eps[0]))
 
-    for i in range(num_eps):
+    kls_eps = np.array(kls_eps)
+    var_eps = np.array(var_eps)
+    bac_eps = np.array(bac_eps)
 
-        kls.append(A_KL(true_A, state_switcher(learned_As[i], true_A)))
-        var.append(compute_norm_cov_A(learned_As[i]))
+    kls_eps_stddev = np.std(kls_eps, axis=0)
+    kls_eps_mean = np.mean(kls_eps, axis=0)
+    var_eps_stddev = np.std(var_eps, axis=0)
+    var_eps_mean = np.mean(var_eps, axis=0)
+    bac_eps_stddev = np.std(bac_eps, axis=0)
+    bac_eps_mean = np.mean(bac_eps, axis=0)
 
+    fig, (ax_top, ax_bot) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
 
-    fig, ax = plt.subplots()
-    ax.plot(kls, label = "KL between true OM and learned OM", linestyle = "-", color = "blue")
-    ax.plot(np.zeros(num_eps), linestyle = "--")
-    ax.plot(best_action_count, label = "Best action taken count", linestyle = "-.")
-    ax.set_xlabel("Episodes")
-    ax.set_ylabel("KL & action count")
+    # Top plot: KL divergence with variance on twin axis
+    ax_top.plot(x, kls_eps_mean, label="KL: true vs learned OM", linestyle="-", color="blue")
+    ax_top.fill_between(x, kls_eps_mean - kls_eps_stddev, kls_eps_mean + kls_eps_stddev,
+                        alpha=0.2, color="blue", label="KL Std Dev")
+    ax_top.set_ylabel("KL divergence")
 
-    ax1 = ax.twinx()
-    ax1.plot(var, label = "Variances of the learned OM", linestyle = "-", color = "green")
-    ax1.set_ylabel("Norm of OM covariances")
+    ax_twin = ax_top.twinx()
+    ax_twin.plot(x, var_eps_mean, label="Norm of OM covariances", linestyle="-", color="green")
+    ax_twin.fill_between(x, var_eps_mean - var_eps_stddev, var_eps_mean + var_eps_stddev,
+                         alpha=0.2, color="green", label="Var Std Dev")
+    ax_twin.set_ylabel("Norm of OM covariances")
 
-    lines1, labels1 = ax.get_legend_handles_labels()
-    lines2, labels2 = ax1.get_legend_handles_labels()
-    ax.legend(lines1 + lines2, labels1 + labels2)
+    lines1, labels1 = ax_top.get_legend_handles_labels()
+    lines2, labels2 = ax_twin.get_legend_handles_labels()
+    ax_top.legend(lines1 + lines2, labels1 + labels2)
+
+    # Bottom plot: best action count
+    ax_bot.plot(x, bac_eps_mean, label="Best action count", linestyle="-.", color="orange")
+    ax_bot.fill_between(x, bac_eps_mean - bac_eps_stddev, bac_eps_mean + bac_eps_stddev,
+                        alpha=0.2, color="orange", label="BAC Std Dev")
+    ax_bot.set_xlabel("Episodes")
+    ax_bot.set_ylabel("Best action count")
+    ax_bot.legend()
+
+    plt.tight_layout()
     plt.show()
-
     
+
+
 def A_diff_plotter(true_A, learned_A):
     A = norm_om(flatten_om(learned_A))
     true_A = flatten_om(true_A)
@@ -575,7 +726,19 @@ def A_diff_plotter(true_A, learned_A):
     plt.show()
 
 
+def efe_eps_plotter(efe_eps):
+    efe_eps = np.array(efe_eps).T
 
+
+    fig, ax = plt.subplots()
+    labels = ["EFE down", "EFE up", "EFE left", "EFE right"]
+    for i in range(4):
+        ax.plot(efe_eps[i], label = labels[i])
+    ax.legend()
+    ax.set_xlabel("Episodes")
+    ax.set_ylabel("EFE")
+    plt.show()
+    
 
 
 
