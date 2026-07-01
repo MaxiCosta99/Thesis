@@ -6,7 +6,7 @@ from utils import make_goals_two_agent, EM2, A_diff_plotter, efe_eps_plotter, A_
 import json
 import os
 from datetime import datetime
-from claude_plotting_two_agents import two_agent_plotter
+from two_agent_plotting_utils import two_agent_plotter
 from pathlib import Path
 
 
@@ -154,12 +154,12 @@ def default():
         empathetic1 = False #to learn goals of ohter
 
         infer_only_on_last_action = False
-        beta1 = 0.8#1 - 10 ** np.random.uniform(-2, -0.5)   # roughly 0.68 to 0.99
+        beta1 = 1 - 10 ** np.random.uniform(-3, -0.5)   # roughly 0.68 to 0.99
         beta2 = 1 - 10 ** np.random.uniform(-4, -1)      # roughly 0.999 to 0.9
-        num_iters = 10#np.random.randint(50,100)
+        num_iters = 50#np.random.randint(50,100)
         num_samples = 200#np.random.randint(50,150)
-        step_size = 0.005#10**(np.random.uniform(-3.5,-2.8))
-        optimizer = "momentum_softstart"
+        step_size = 0.01 #10**(np.random.uniform(-3.5,-2))
+        optimizer = None#"momentum"
         reg_strength = 0
         goal_learning_beta = 0.5
         clipping = True
@@ -172,8 +172,7 @@ def default():
 
 
 
-        opt_params = {"natgrad" : False,
-                        "log_space" : True,
+        opt_params = {"log_space" : True,
                         "reg_strength" : reg_strength,
                         "beta1" : beta1,
                         "beta2" : beta2,

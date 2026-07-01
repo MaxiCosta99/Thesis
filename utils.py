@@ -468,7 +468,7 @@ def EM2(obs_eps, acts_eps, tm, A_param_shape, s_param_shape, gm = None, start = 
 
  
 
-def dir_VI(logl, data, prior, goal_learning_vars = dict, opt_params = dict):
+def dir_VI(logl, data, prior, belief, goal_learning_vars = dict, opt_params = dict):
 
     natgrad = opt_params["natgrad"]
     log_space = opt_params["log_space"]
@@ -504,45 +504,21 @@ def dir_VI(logl, data, prior, goal_learning_vars = dict, opt_params = dict):
         for i in range(num_samples):
             sample = np.random.dirichlet(var)
             score = -sp.polygamma(0, var) + sp.polygamma(0, sumv) + np.log(sample)
-            samples[i] = logl(data, sample) * score
+            logl0 = logl(data[0], sample, belief[0],3)
+            logl1 = logl(data[1], sample, belief[1],2)
+            logl2 = logl(data[2], sample, belief[2],1)
+            #samples[i] = logl(data, sample) * score
+            samples[i] = (logl0+logl1+logl2)*score
             
 
         exp_grad = np.sum(samples, axis = 0)/num_samples
-
-        """#With baseline
-        logls = np.zeros(num_samples)
-        scores = np.zeros((num_samples, dim_params))
-
-        for i in range(num_samples):
-            sample = np.random.dirichlet(var)
-            logls[i] = logl(data, sample)
-            scores[i] = -sp.polygamma(0, var) + sp.polygamma(0, sumv) + np.log(sample)
-
-        baseline = np.mean(logls)
-
-        exp_grad = np.mean((logls - baseline)[:, None] * scores, axis=0)"""
         
 
         grad = exp_grad - kl_grad
 
-        """#old version
-        grad = np.clip(grad, -1, 1)
-        var = var + grad*step_size
-        var = np.clip(var, 0, 10)"""
 
 
-        if natgrad == True: #In case I want to compute the gradients in natural parameter space
-            d = sp.polygamma(1, var)
-            c = sp.polygamma(1, sumv)
-
-            g_over_d = grad / d
-            correction = c / (1.0 + c * np.sum(1.0 / d))
-
-            nat_grad = g_over_d - correction * np.sum(g_over_d)
-            grad = nat_grad
-
-        
-        
+    
 
 
         if log_space == True:
@@ -599,9 +575,10 @@ def dir_VI(logl, data, prior, goal_learning_vars = dict, opt_params = dict):
             assert 1/0, "Can do only things in exp space for now"
 
 
-    lgl = logl(data, var/np.sum(var))
-    print(f'This is the logl of the action of the other w/ new goals: {lgl}')
-    
+    #lgl = logl(data, var/np.sum(var), )
+    for i in range(3):
+        lgl = logl(data[i], var/np.sum(var), belief[i],3-i)
+        print(f'This is the logl of the {i} action of the other w/ new goals: {lgl}')
 
 
     print('-------------------------------')
