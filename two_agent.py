@@ -129,8 +129,8 @@ class agent:
 
     for key in sampling:
         assert key in implemented_sampling_obj, f"{key} is not in the implemented list {implemented_sampling_obj}"
-    assert sampling["om"] in implemented_sampling, f"{sampling["om"]} is not in the implemented list {implemented_sampling}"
-    assert sampling["goals"] in implemented_sampling, f"{sampling["goals"]} is not in the implemented list {implemented_sampling}"
+    assert sampling["om"] in implemented_sampling, f"{sampling['om']} is not in the implemented list {implemented_sampling}"
+    assert sampling["goals"] in implemented_sampling, f"{sampling['goals']} is not in the implemented list {implemented_sampling}"
 
 
 

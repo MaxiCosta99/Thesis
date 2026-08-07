@@ -2,9 +2,9 @@ import pygame
 import sys
 import numpy as np
 import os
-import matplotlib.cm as cm
+import matplotlib.pyplot as plt
 
-cmap = cm.get_cmap('viridis')
+cmap = plt.colormaps['viridis']
 
 def stab_p(p):
     eps = 1e-6
