@@ -1,0 +1,29 @@
+{
+  "hyperparams": {
+    "log_space": true,
+    "reg_strength": 0,
+    "beta1": 0.9866440779529495,
+    "beta2": 0.9876950621967736,
+    "num_iters": 100,
+    "num_samples": 100,
+    "optimizer": null,
+    "clipping": true,
+    "clips": null,
+    "step_size": 0.05,
+    "infer_only_on_last_action": false
+  },
+  "result": [
+    0.79,
+    1.09,
+    1.09,
+    0.86,
+    0.92,
+    1.02,
+    0.59,
+    1.04,
+    1.31,
+    0.93,
+    0.54,
+    7.22
+  ]
+}

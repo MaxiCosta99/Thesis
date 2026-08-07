@@ -1,0 +1,16 @@
+{
+  "hyperparams": {
+    "natgrad": false,
+    "log_space": true,
+    "reg_strength": 0,
+    "beta1": 0.9984022744984536,
+    "beta2": 0.9994620330554562,
+    "num_iters": 93,
+    "num_samples": 20,
+    "optimizer": null,
+    "clipping": true,
+    "clips": null,
+    "step_size": 0.01,
+    "infer_only_on_last_action": false
+  }
+}

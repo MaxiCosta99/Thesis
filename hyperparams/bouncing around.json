@@ -1,0 +1,15 @@
+{
+  "hyperparams": {
+    "log_space": true,
+    "reg_strength": 0,
+    "beta1": 0.9893852854304352,
+    "beta2": 0.9987975540168892,
+    "num_iters": 50,
+    "num_samples": 100,
+    "optimizer": null,
+    "clipping": true,
+    "clips": null,
+    "step_size": 0.05,
+    "infer_only_on_last_action": false
+  }
+}
