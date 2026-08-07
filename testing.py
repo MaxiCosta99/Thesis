@@ -8,6 +8,6 @@ import os
 
 x = np.array([0.5,2])
 
-print(x)
 
-print(np.clip(x,1,None))
+print(np.argmax(x))
+print(np.max(x))

@@ -291,27 +291,43 @@ class agent:
       self.goal_states[who] = new_goal_states.copy()
 
 
-  def logl_action(self, a, sampled_goal):
+  def logl_action(self, a, sampled_goal, belief, res_dep):
+        
+        belief_cp = self.s.copy()
+        resdep_cp = self.reason_depth
+
+        self.s = belief.copy()
+        self.reason_depth = res_dep
 
         actions, actions_H = self.SFE_call_other(sampled_goal)
-        actions_prob = softmax(actions_H, self.goal_learning_beta)
-
+        
+        
+        """actions_prob = softmax(actions_H, self.goal_learning_beta)
+        
         if a in actions:
             idx = np.where(actions == a)[0][0]
-            action_prob = actions_prob[idx]
+            action_prob = actions_prob[idx]"""
+
+
+        action = actions[np.argmin(actions_H)]
+        if action == a:
+           action_prob = 1
 
         else:
             action_prob = 0.01 
     
+        self.s = belief_cp.copy()
+        self.reason_depth = resdep_cp
+
         return np.log(action_prob)
 
 
-  def update_goals_other(self, a, belief_state, opt_params, k):
+  def update_goals_other(self, a, belief, opt_params, k):
 
-      self.reason_depth = self.reason_depth + 1 #need to go back at previous timepoint to see what I would have done if I were him using my belief about his goals
+      #self.reason_depth = self.reason_depth + 1 #need to go back at previous timepoint to see what I would have done if I were him using my belief about his goals
       
-      belief_state_cp = self.s.copy()
-      self.s = belief_state.copy()
+      #belief_state_cp = self.s.copy()
+      #self.s = belief_state.copy()
 
 
       assert self.social == True, f"Can't update goals of other agents if agent is not social"
@@ -334,7 +350,7 @@ class agent:
       print(f'These are the previous goals; \n {np.round(prior,2)}')
 
       goal_learning_vars = self.goal_learning_vars
-      new_desires, goal_learning_vars = dir_VI(self.logl_action, a, prior, goal_learning_vars, opt_params = opt_params)
+      new_desires, goal_learning_vars, logl = dir_VI(self.logl_action, a, prior, belief, goal_learning_vars, opt_params = opt_params)
       self.goal_learning_vars = goal_learning_vars
 
       print(f'These are the updated goals: \n {np.round(new_desires,2)}')
@@ -358,11 +374,11 @@ class agent:
       avg_goals = new_desires_reshaped/np.sum(new_desires_reshaped)
       
       
-      if k == 0:
+      """if k == 0:
             lgl = self.logl_action(a, avg_goals)
             print(f'The Loglikelihood of action {a} at step {k} is {lgl}')
             if lgl==0:
-                print('LETS GO????')
+                print('LETS GO????')"""
 
 
 
@@ -371,8 +387,10 @@ class agent:
 
     
 
-      self.reason_depth = self.reason_depth - 1
-      self.s = belief_state_cp.copy()
+      #self.reason_depth = self.reason_depth - 1
+      #self.s = belief_state_cp.copy()
+
+      return logl
 
 
 
@@ -1527,6 +1545,7 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
   epochs_beliefs = []
   epochs_desires = []
   epochs_best_act_counts = []
+  epochs_logls = []
   
   epochs_observations_agent_0 = {"0": [], #regarding agent 0
                                  "1": []} #regarding agent 1
@@ -1583,6 +1602,9 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
     agentselfposA = []
     agentselfposB = []
 
+    acts1 = [] #now used for full action sequence goal learning
+    bels = [] #now used for full action sequence goal learning
+
     beliefs.append((agent0.s.copy(),agent1.s.copy()))
 
 
@@ -1615,12 +1637,16 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
 
 
         beliefs.append((agent0.s.copy(),agent1.s.copy()))
+        bels.append(agent0.s.copy()) #now used to full action sequence goal learning
         
    
         
         u1, pu1 = agent1.pick_action()
 
         pus1.append(pu1)
+
+
+        acts1.append(u1) #now used to full action sequence goal learning
 
 
         agent1.act(u1)
@@ -1671,11 +1697,11 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
 
 
 
-        #learning the goals of the other
-        if agent0.empathetic == True:
+        #learning the goals of the other OLD VERSION, NOW TRY THE WHOLE ACTION SEQUENCE
+        if 1 == 0:
 
             first = 20
-            second = 40
+            second = 20
             
             #agent0.goal_learning_beta = 1/(e+1)
             
@@ -1755,6 +1781,12 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
 
     
 
+
+    if agent0.empathetic == True:
+        logl = agent0.update_goals_other(acts1, bels, opt_params, k)
+        epochs_logls.append(logl)
+
+        
 
     
     #learning the OM
@@ -1901,7 +1933,7 @@ def run(agent0, agent1, epochs = int, nr_moves = int, reason_depth = int,start_b
     epochs_best_act_counts.append([best_act_counter0, best_act_counter1])
 
 
-  return epochs_positions, epochs_A_matrices, epochs_agent_worlds, epochs_beliefs, epochs_desires, cheeses, epochs_pus, epochs_best_act_counts
+  return epochs_positions, epochs_A_matrices, epochs_agent_worlds, epochs_beliefs, epochs_desires, cheeses, epochs_pus, epochs_best_act_counts, epochs_logls
 
 
 def main():

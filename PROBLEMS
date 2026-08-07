@@ -1,17 +1,3 @@
-Do different planning step weighing, might create interesting behaviour
-    AS OF NOW NO COMPOUNDING OF SUCCESSIVE EFES, ONLY USED LAST ONE
-
-
-
-
-Using sophisticated sampling it works
-Still weird that by uniform sample of all actinos worked, but just sampling a few using u_imagine didn't
-    Might create problems down the line
-        VERY SUSPICIUOS
-
-
-
-
 Current situazia
     Both know both observations and both actions
 
@@ -25,8 +11,7 @@ Should disentangle GM A, one with 5 obs for env1 and one with 7 obs for env2
     when performing inference use GM of respective world
     or obs of respective world 
 
-obs 7 (and possibly 2,3,8) have problems
-    need fixing 
+
 
 
 sophia:
@@ -39,69 +24,11 @@ For now dirichlet sampling is just taking the mean
 
 I have implemented the MC version for two agents, for one agent not yet
 
-    Now using min instead of mean as MC estimator of SFE
-        works, but risky in case trans probs are not deterministic
 
-    In general using MC is ass
-        Too high variance and actions sampled are terrible
-        This is mainly due to the fact that risk is a VERY POOR GUIDANCE
+In two agent setting, With goal_obs reward 2 and punishment 6
+    reason_depth 2 is sufficient, HOW?
+    only goal_obs, no novelty term!!!!!
 
 
-Even if can infer states using bayesian
-    imagining inferences is still based on true inference, to fix so that both can be bayesian
-
-
-for now only using sampling of goals
-    NO SAMPLING OF GM
-    NO SAMPLING OF STATE
-
-
-
-
-    53 e 47 (0,1)
-    55 e 45 (0,1) going in opposite direction :(
-
-
- {'natgrad': False,
- 'log_space': True,
- 'reg_strength': 0,
- 'beta1': 0.7345328315455324,
- 'beta2': 0.9533329125495537,
- 'num_iters': 77,
- 'num_samples':241,
- 'optimizer': 'adam',
- 'clipping': False,
- 'clips': None,
- 'step_size': 0.04797779900649818}
-
-
-
-'beta1': 0.74, 'beta2': 0.89, 'num_iters': 61, 'num_samples': 235, 'step_size': 0.094
- [[1.41505946 1.65778951 4.79356765 1.46355451]
- [1.51710892 1.42201867 1.55829236 4.97893437]]
-
-
-'beta1': 0.82, 'beta2': 0.75, 'num_iters': 75, 'num_samples': 70, 'step_size': 0.083
- [[1.31524359 1.2113279  5.02273864 1.55452865]
- [1.36993872 1.18240313 1.54634186 4.76632735]]
-
-
-'beta1': 0.897, 'beta2': 0.813, 'num_iters': 83, 'num_samples': 244, 'step_size': 0.092
-  [[1.58686984 1.57605153 4.2516792  1.4978339 ]
- [1.48872686 1.30516358 1.47279723 6.09308952]]
-
-
-'beta1': 0.7119, 'beta2': 0.899, 'num_iters': 71, 'num_samples': 122, 'step_size': 0.09
-  [[1.51009861 1.21268571 4.89734409 1.43158966]
- [1.6128332  1.61270329 1.66191253 5.24057182]]
-
-
- 'beta1': 0.8857, 'beta2': 0.745, 'num_iters': 53, 'num_samples': 232,'step_size': 0.040
- [[1.27955534 1.30614161 3.67269412 1.19541797]
- [1.17738908 1.23888697 1.17835822 4.81376496]]
-
-
-'beta1': 0.969, 'beta2': 0.8976, 'num_iters': 33, 'num_samples': 181, 'step_size': 0.0140
-[[0.906091   0.91564468 4.06505593 0.91863662]
- [0.94312205 0.94739057 0.94531639 3.2414335 ]]
-
+REMEMBER NOW THERE IS A GOAL LEARNING BETA
+ALSO PARAMS OTHER ARE SAMPLED IN SELF EFE CALL MORE REALISTIC LESS CALLS

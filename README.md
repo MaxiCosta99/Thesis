@@ -1,3 +1,1 @@
 # Thesis
-
-Work in progress...

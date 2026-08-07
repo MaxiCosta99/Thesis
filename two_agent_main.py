@@ -103,16 +103,16 @@ desires_other_showtype = "mean"
 def default():
 
         #experiments params
-        experiment_name = "none"
-        epochs = 60
+        experiment_name = "learn_prefs_until_conv"
+        epochs = 30
         selfish_episodes = 150
         num_tries = 1
         nr_A_learning_moves = 50
         message_success_prob = 0.5 #doesnt matter now, after last selfish episode always message
-        to_save = False
+        to_save = True
         to_animate = False
         to_plot = False
-        to_find_good_dir_vi_params = True
+        to_find_good_dir_vi_params = False
 
 
 
@@ -122,6 +122,8 @@ def default():
         
         uncertain_goals = True
         agent0_goals, agent1_goals = make_goals_two_agent(reward = reward, punishment = punishment, beta = beta, goal_type = goal_type, uncertain_goals = uncertain_goals)
+        
+
         
         obs_model_given = True#I am sorry for this
         A_learning = not obs_model_given
@@ -142,7 +144,7 @@ def default():
         terms1 = ["risk_obs"]
 
         sampling0 = {"om": "mean",
-                     "goals": "mean"}
+                     "goals": "sample"}
         
         sampling1 = {"om": "mean",
                      "goals": "mean"} #in reality not used
@@ -154,15 +156,16 @@ def default():
         empathetic1 = False #to learn goals of ohter
 
         infer_only_on_last_action = False
-        beta1 = 1 - 10 ** np.random.uniform(-3, -0.5)   # roughly 0.68 to 0.99
-        beta2 = 1 - 10 ** np.random.uniform(-4, -1)      # roughly 0.999 to 0.9
-        num_iters = 50#np.random.randint(50,100)
-        num_samples = 200#np.random.randint(50,150)
-        step_size = 0.01 #10**(np.random.uniform(-3.5,-2))
-        optimizer = None#"momentum"
+        beta1 = 0.95#1 - 10 ** np.random.uniform(-3, -0.5)   # roughly 0.68 to 0.99
+        beta2 = 0.99#1 - 10 ** np.random.uniform(-4, -1)      # roughly 0.999 to 0.9
+        num_iters = 100#np.random.randint(50,100)
+        num_samples = 300#np.random.randint(50,150)
+        step_size = 0.001 #10**(np.random.uniform(-3.5,-2))
+        optimizer = None#"adam"
         reg_strength = 0
-        goal_learning_beta = 0.5
+        goal_learning_beta = 0.1 #not used anymore using deterministic decision rule
         clipping = True
+        tol = 1e-4
 
 
 
@@ -182,7 +185,8 @@ def default():
                         "clipping" : clipping,
                         "clips" : None,
                         "step_size" : step_size,
-                        "infer_only_on_last_action" : infer_only_on_last_action}
+                        "infer_only_on_last_action" : infer_only_on_last_action,
+                        "tol" : tol}
 
 
         if to_find_good_dir_vi_params:
@@ -223,6 +227,7 @@ def default():
         kls_eps_other = []
         var_eps_other = []
         cheeses_eps = []
+        logl_eps = []
 
         for e in range(num_tries):
 
@@ -247,7 +252,7 @@ def default():
                 imagine_u_temp = imagine_u_temp, imagine_u_temp_other = imagine_u_temp_other)
 
   
-                epochs_positions, epochs_A_matrices, epochs_agent_worlds, epochs_beliefs, epochs_desires, cheeses, epochs_pus, epochs_best_act_counters = run(agent0 = agent0, agent1 = agent1, epochs = epochs, nr_moves = nr_moves, reason_depth = reason_depth, start_beliefs = copy.deepcopy(full_start_s),
+                epochs_positions, epochs_A_matrices, epochs_agent_worlds, epochs_beliefs, epochs_desires, cheeses, epochs_pus, epochs_best_act_counters, epochs_logl = run(agent0 = agent0, agent1 = agent1, epochs = epochs, nr_moves = nr_moves, reason_depth = reason_depth, start_beliefs = copy.deepcopy(full_start_s),
                                                                                                         exploration_phase = exploration, A_learning = A_learning, infer_only_on_last_action = infer_only_on_last_action,
                                                                                                         opt_params = opt_params, nr_A_learning_moves = nr_A_learning_moves, message_success_prob = message_success_prob, selfish_episodes = selfish_episodes)
                 
@@ -271,6 +276,9 @@ def default():
 
                         pe1.append(epochs_pus[i][0][0])
                         pe2.append(epochs_pus[i][1][0])
+
+
+
                                 
 
                 kls = []
@@ -298,6 +306,7 @@ def default():
                 kls_eps_other.append(kls_other)
                 var_eps_other.append(var_other)
                 cheeses_eps.append(cheeses)
+                logl_eps.append(epochs_logl)
                 
 
         experiment_results = {"bac_eps_1": bac_eps_1,
@@ -308,7 +317,8 @@ def default():
                                 "var_eps": var_eps,
                                 "kls_eps_other": kls_eps_other,
                                 "var_eps_other": var_eps_other,
-                                "cheeses_eps": cheeses_eps}
+                                "cheeses_eps": cheeses_eps,
+                                "logl_eps": logl_eps}
 
 
         experiment = {"name": experiment_name,
@@ -342,7 +352,7 @@ def default():
                                 )
                 
         if to_animate:
-                        animate(epochs_positions, cheeses, A_matrices = epochs_A_matrices, agent_worlds = epochs_agent_worlds, epochs_beliefs = epochs_beliefs, epochs_desires = epochs_desires, desires_other_showtype = desires_other_showtype)
+                animate(epochs_positions, cheeses, A_matrices = epochs_A_matrices, agent_worlds = epochs_agent_worlds, epochs_beliefs = epochs_beliefs, epochs_desires = epochs_desires, desires_other_showtype = desires_other_showtype)
                 
                 
 

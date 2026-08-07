@@ -470,7 +470,6 @@ def EM2(obs_eps, acts_eps, tm, A_param_shape, s_param_shape, gm = None, start = 
 
 def dir_VI(logl, data, prior, belief, goal_learning_vars = dict, opt_params = dict):
 
-    natgrad = opt_params["natgrad"]
     log_space = opt_params["log_space"]
     lambd = opt_params["reg_strength"]
     beta1 = opt_params["beta1"]
@@ -481,6 +480,7 @@ def dir_VI(logl, data, prior, belief, goal_learning_vars = dict, opt_params = di
     clipping = opt_params["clipping"]
     clips = opt_params["clips"]
     step_size = opt_params["step_size"]
+    tol = opt_params['tol']
 
 
 
@@ -490,7 +490,14 @@ def dir_VI(logl, data, prior, belief, goal_learning_vars = dict, opt_params = di
 
     sump = np.sum(prior)
 
-    for j in range(num_iters):
+    logl_sample = []#np.zeros((num_iters,3))
+    logl_mean = []#np.zeros((num_iters,3))
+
+    #for j in range(num_iters):
+    keep_going = True
+    j = -1
+    while keep_going:
+        j = j+1
         #print("-------------------------------------------")
 
         sumv = np.sum(var)
@@ -501,21 +508,39 @@ def dir_VI(logl, data, prior, belief, goal_learning_vars = dict, opt_params = di
 
         samples = np.zeros((num_samples, dim_params))
 
+        
+        logls0 = np.zeros(num_samples)
+        logls1 = np.zeros(num_samples)
+        logls2 = np.zeros(num_samples)
         for i in range(num_samples):
             sample = np.random.dirichlet(var)
+            #sample = var/np.sum(var)
             score = -sp.polygamma(0, var) + sp.polygamma(0, sumv) + np.log(sample)
-            logl0 = logl(data[0], sample, belief[0],3)
-            logl1 = logl(data[1], sample, belief[1],2)
-            logl2 = logl(data[2], sample, belief[2],1)
+            logls0[i] = logl(data[0], sample, belief[0],3)
+            logls1[i] = logl(data[1], sample, belief[1],2)
+            logls2[i] = logl(data[2], sample, belief[2],1)
+
             #samples[i] = logl(data, sample) * score
-            samples[i] = (logl0+logl1+logl2)*score
+            samples[i] = (logls0[i]+logls1[i]+logls2[i])*score
+
+
+        logls_list = [np.mean(logls0), np.mean(logls1), np.mean(logls2)]
+        logl_sample.append(logls_list)
+
+        """logl_sample[j,0] = np.mean(logls0)
+        logl_sample[j,1] = np.mean(logls1)
+        logl_sample[j,2] = np.mean(logls2)"""
+
+        for i in range(3):
+            print(f'This is the average logl for action {i}: {logl_sample[j][i]}')
+        print(f'This is the total average logl: {np.mean(logl_sample[j])}')
+
             
 
         exp_grad = np.sum(samples, axis = 0)/num_samples
         
 
         grad = exp_grad - kl_grad
-
 
 
     
@@ -563,10 +588,18 @@ def dir_VI(logl, data, prior, belief, goal_learning_vars = dict, opt_params = di
                 assert 1/0, "What?? THERE IS NO OTHER OPTIMIZER"
 
 
-            
-            
+            if clipping == True:
+                opt_grad = np.clip(opt_grad, -20,20)
+
+
+            phi_old = phi
             phi = phi + step_size * opt_grad
             var = np.exp(phi)
+
+            print(f'These are the tolerated param update diffs: {np.linalg.norm(phi_old-phi)}')
+            print(f'These are the tolerated grad norms: {np.linalg.norm(opt_grad)}')
+            if np.linalg.norm(phi_old-phi)<tol or np.linalg.norm(opt_grad)<tol:
+                keep_going = False
 
             if clipping == True:
                 var = np.clip(var, 1,None)
@@ -575,10 +608,23 @@ def dir_VI(logl, data, prior, belief, goal_learning_vars = dict, opt_params = di
             assert 1/0, "Can do only things in exp space for now"
 
 
+        logls_mean_list = []
+        for i in range(3):
+            logls_mean_list.append(logl(data[i], var/np.sum(var), belief[i],3-i))
+            print(f'This is the logl of the {i} action of the other w/ new goals: {logls_mean_list[i]}')
+        
+        logl_mean.append(logls_mean_list)
+
+        
+
+
     #lgl = logl(data, var/np.sum(var), )
+    """
+    lgl = np.zeros(3)
     for i in range(3):
-        lgl = logl(data[i], var/np.sum(var), belief[i],3-i)
-        print(f'This is the logl of the {i} action of the other w/ new goals: {lgl}')
+        lgl[i] = logl(data[i], var/np.sum(var), belief[i],3-i)
+        print(f'This is the logl of the {i} action of the other w/ new goals: {lgl[i]}')
+    print(f'This is the total logl: {np.sum(lgl)}')"""
 
 
     print('-------------------------------')
@@ -589,7 +635,7 @@ def dir_VI(logl, data, prior, belief, goal_learning_vars = dict, opt_params = di
 
 
     
-    return var, goal_learning_vars
+    return var, goal_learning_vars, [logl_sample, logl_mean]
 
 
 
